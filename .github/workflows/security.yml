@@ -12,10 +12,10 @@ permissions:
   contents: read
 
 jobs:
-  trivy-scan:
-    name: Trivy Juice Shop Security Scan
+  security-scan:
+    name: Source and Container Security
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
       - name: Checkout DevSecOps repository
@@ -27,13 +27,39 @@ jobs:
           repository: juice-shop/juice-shop
           path: juice-shop
 
-      - name: Scan Juice Shop source code
+      - name: Scan source for misconfigurations and secrets
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: juice-shop
+          scanners: misconfig,secret
+          severity: HIGH,CRITICAL
+          format: json
+          output: trivy-source.json
+          exit-code: '0'
+
+      - name: Build Juice Shop Docker image
+        run: docker build -t juice-shop:ci ./juice-shop
+
+      - name: Scan Docker image for vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: juice-shop:ci
           scanners: vuln,misconfig,secret
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-          format: table
+          format: json
+          output: trivy-image.json
           exit-code: '0'
+
+      - name: Upload Trivy reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-security-reports
+          path: |
+            trivy-source.json
+            trivy-image.json
+          if-no-files-found: warn
+          retention-days: 14
