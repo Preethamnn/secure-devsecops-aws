@@ -1,0 +1,22 @@
+name: DevSecOps CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  basic-check:
+    name: Repository Basic Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify project files
+        run: |
+          echo "DevSecOps CI pipeline started"
+          test -d .github/workflows
+          echo "Workflow directory exists"
