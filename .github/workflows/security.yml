@@ -1,3 +1,4 @@
+
 name: DevSecOps Security Scan
 
 on:
@@ -12,19 +13,25 @@ permissions:
 
 jobs:
   trivy-scan:
-    name: Trivy Filesystem Scan
+    name: Trivy Juice Shop Security Scan
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
-      - name: Checkout repository
+      - name: Checkout DevSecOps repository
         uses: actions/checkout@v4
 
-      - name: Scan for vulnerabilities, misconfigurations and secrets
+      - name: Checkout OWASP Juice Shop source
+        uses: actions/checkout@v4
+        with:
+          repository: juice-shop/juice-shop
+          path: juice-shop
+
+      - name: Scan Juice Shop source code
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
-          scan-ref: .
+          scan-ref: juice-shop
           scanners: vuln,misconfig,secret
           severity: HIGH,CRITICAL
           ignore-unfixed: true
