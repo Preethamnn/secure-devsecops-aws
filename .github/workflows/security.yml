@@ -42,6 +42,7 @@ jobs:
       - name: Build Juice Shop Docker image
         run: docker build -t juice-shop:ci ./juice-shop
 
+      
       - name: Inspect vulnerable dependency paths
         continue-on-error: true
         run: |
@@ -50,7 +51,15 @@ jobs:
             juice-shop:ci \
             ls --all --json \
             crypto-js handlebars jsonwebtoken lodash tar \
-            > dependency-tree.json || true
+            > dependency-tree.json \
+            2> dependency-tree-errors.txt || true
+
+          echo "Dependency tree size:"
+          wc -c dependency-tree.json
+
+          echo "Dependency inspection diagnostics:"
+          cat dependency-tree-errors.txt
+
 
 
       - name: Scan Docker image for vulnerabilities
