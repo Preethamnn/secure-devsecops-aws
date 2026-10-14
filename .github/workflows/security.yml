@@ -43,22 +43,21 @@ jobs:
         run: docker build -t juice-shop:ci ./juice-shop
 
       
+      
       - name: Inspect vulnerable dependency paths
         continue-on-error: true
         run: |
           docker run --rm \
-            --entrypoint npm \
+            --entrypoint node \
             juice-shop:ci \
-            ls --all --json \
-            crypto-js handlebars jsonwebtoken lodash tar \
-            > dependency-tree.json \
-            2> dependency-tree-errors.txt || true
+            -e "const fs=require('fs');const paths=['crypto-js','handlebars','jsonwebtoken','lodash','tar'];for(const p of paths {console.log('\nPACKAGE:',p);try{console.log(require.resolve(p+'/package.json'))}catch(e){try{console.log(require.resolve(p))}catch(e2){console.log('NOT RESOLVED:',e2.message)}}}" \
+            > dependency-tree.json 2> dependency-tree-errors.txt || true
 
-          echo "Dependency tree size:"
-          wc -c dependency-tree.json
-
-          echo "Dependency inspection diagnostics:"
+          echo "Inspection output:"
+          cat dependency-tree.json
+          echo "Inspection errors:"
           cat dependency-tree-errors.txt
+
 
 
 
