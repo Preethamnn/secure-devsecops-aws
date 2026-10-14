@@ -42,6 +42,17 @@ jobs:
       - name: Build Juice Shop Docker image
         run: docker build -t juice-shop:ci ./juice-shop
 
+      - name: Inspect vulnerable dependency paths
+        continue-on-error: true
+        run: |
+          docker run --rm \
+            --entrypoint npm \
+            juice-shop:ci \
+            ls --all --json \
+            crypto-js handlebars jsonwebtoken lodash tar \
+            > dependency-tree.json || true
+
+
       - name: Scan Docker image for vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -62,5 +73,6 @@ jobs:
           path: |
             trivy-source.json
             trivy-image.json
+            dependency-tree.json
           if-no-files-found: warn
           retention-days: 14
