@@ -25,6 +25,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: juice-shop/juice-shop
+          ref: v20.3.0
           path: juice-shop
 
       - name: Scan source for misconfigurations and secrets
