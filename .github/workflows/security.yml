@@ -105,6 +105,40 @@ jobs:
 
 
 
+      - name: Inspect parent dependency declarations
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("image-rootfs/juice-shop/node_modules")
+          targets = {
+              "crypto-js", "handlebars", "jsonwebtoken",
+              "lodash", "tar", "moment"
+          }
+
+          print("Parent dependency declarations:")
+          for package_file in sorted(root.rglob("package.json")):
+              try:
+                  data = json.loads(package_file.read_text(encoding="utf-8"))
+              except (OSError, json.JSONDecodeError):
+                  continue
+
+              declared = {}
+              for section in ("dependencies", "optionalDependencies",
+                              "devDependencies", "peerDependencies"):
+                  deps = data.get(section, {})
+                  if isinstance(deps, dict):
+                      for name in targets.intersection(deps):
+                          declared[name] = deps[name]
+
+              if declared:
+                  parent = data.get("name", str(package_file.parent))
+                  print(f"{parent} ({data.get('version', 'unknown')}): {declared}")
+          PY
+
+
+
       - name: Scan Docker image for vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
         with:
