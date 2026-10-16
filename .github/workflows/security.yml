@@ -65,6 +65,46 @@ jobs:
           cat dependency-tree.json
 
 
+
+      - name: Report vulnerable package versions
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          lock = Path("image-rootfs/juice-shop/package-lock.json")
+          targets = {
+              "crypto-js", "handlebars", "jsonwebtoken",
+              "lodash", "tar", "moment"
+          }
+
+          if not lock.exists():
+              print("ERROR: package-lock.json not found")
+              raise SystemExit(1)
+
+          data = json.loads(lock.read_text(encoding="utf-8"))
+          packages = data.get("packages", {})
+
+          print("Package-lock version:", data.get("lockfileVersion"))
+          print("\nInstalled dependency locations:")
+
+          found = 0
+          for path, info in sorted(packages.items()):
+              if not path:
+                  continue
+
+              name = path.rsplit("node_modules/", 1)[-1]
+              if name in targets:
+                  print(f"{name:15} {info.get('version', 'unknown'):12} {path}")
+                  found += 1
+
+          if found == 0:
+              print("No target packages found in package-lock.json")
+          PY
+
+
+
       - name: Scan Docker image for vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
         with:
