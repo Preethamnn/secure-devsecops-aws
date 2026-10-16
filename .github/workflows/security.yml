@@ -151,6 +151,45 @@ jobs:
           output: trivy-image.json
           exit-code: '0'
 
+
+
+      - name: Summarize vulnerable package instances
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = Path("trivy-image.json")
+          if not report.exists():
+              print("ERROR: trivy-image.json not found")
+              raise SystemExit(1)
+
+          data = json.loads(report.read_text(encoding="utf-8"))
+          targets = {
+              "crypto-js", "handlebars", "jsonwebtoken",
+              "lodash", "tar", "moment"
+          }
+
+          print("Vulnerable package instances:")
+          count = 0
+
+          for result in data.get("Results", []):
+              for item in result.get("Vulnerabilities") or []:
+                  if item.get("PkgName") in targets:
+                      print(
+                          f"{item.get('Severity', 'UNKNOWN'):8} "
+                          f"{item.get('VulnerabilityID', 'N/A'):20} "
+                          f"{item.get('PkgName', 'N/A'):15} "
+                          f"{item.get('InstalledVersion', 'N/A'):12} "
+                          f"fixed={item.get('FixedVersion') or 'not specified'}"
+                      )
+                      count += 1
+
+          print(f"\nTotal matching vulnerability records: {count}")
+          PY
+
+
       - name: Upload Trivy reports
         if: always()
         uses: actions/upload-artifact@v4
