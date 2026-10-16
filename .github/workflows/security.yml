@@ -139,6 +139,47 @@ jobs:
 
 
 
+      - name: Inspect Handlebars dependency configuration
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          files = [
+              "image-rootfs/juice-shop/node_modules/hbs/package.json",
+              "image-rootfs/juice-shop/node_modules/handlebars/package.json",
+              "image-rootfs/juice-shop/package.json",
+          ]
+
+          sections = [
+              "name",
+              "version",
+              "dependencies",
+              "devDependencies",
+              "overrides",
+              "scripts",
+          ]
+
+          for filename in files:
+              path = Path(filename)
+              print(f"\n{'=' * 65}")
+              print(f"FILE: {filename}")
+              print("=" * 65)
+
+              if not path.exists():
+                  print("FILE NOT FOUND")
+                  continue
+
+              data = json.loads(path.read_text(encoding="utf-8"))
+
+              for section in sections:
+                  if section in data:
+                      print(f"\n{section}:")
+                      print(json.dumps(data[section], indent=2))
+          PY
+
+
+
       - name: Scan Docker image for vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
         with:
