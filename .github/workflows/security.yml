@@ -39,8 +39,25 @@ jobs:
           output: trivy-source.json
           exit-code: '0'
 
+      
+      - name: Apply Handlebars security override
+        working-directory: juice-shop
+        run: |
+          set -eu
+
+          if [ -f package-lock.json ]; then
+            echo "A package-lock.json exists. Review lockfile handling before applying the override."
+            exit 1
+          fi
+
+          npm pkg set 'overrides.handlebars=4.7.10'
+
+          echo "Configured npm override:"
+          node -e "console.log(JSON.stringify(require('./package.json').overrides, null, 2))"
+
       - name: Build Juice Shop Docker image
         run: docker build -t juice-shop:ci ./juice-shop
+
 
      
       - name: Inspect Juice Shop image filesystem
