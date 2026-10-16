@@ -119,36 +119,25 @@ jobs:
 
 
       
-      - name: Trace crypto-js dependency
+      
+      - name: Find crypto-js parent dependencies
         if: always()
         run: |
           python3 - <<'PY'
           import json
           from pathlib import Path
 
-          lock = Path("image-rootfs/juice-shop/package-lock.json")
-          if not lock.exists():
-              raise SystemExit(f"ERROR: {lock} not found")
+          root = Path("image-rootfs/juice-shop/node_modules")
+          targets = {"crypto-js"}
 
-          data = json.loads(lock.read_text(encoding="utf-8"))
-          packages = data.get("packages", {})
-
-          print("crypto-js installed instances and parent declarations:")
+          print("Packages declaring crypto-js:")
           found = 0
 
-          for path, info in sorted(packages.items()):
-              if not path or path.rsplit("node_modules/", 1)[-1] != "crypto-js":
+          for manifest in sorted(root.rglob("package.json")):
+              try:
+                  data = json.loads(manifest.read_text(encoding="utf-8"))
+              except (OSError, json.JSONDecodeError):
                   continue
-
-              found += 1
-              print(f"\nInstalled path: {path}")
-              print(f"Installed version: {info.get('version', 'unknown')}")
-
-              parent_path = path.rsplit("/node_modules/", 1)[0]
-              parent_info = packages.get(parent_path, {})
-              parent_name = parent_info.get("name", parent_path or "root")
-              print(f"Nearest parent package: {parent_name}")
-              print(f"Parent version: {parent_info.get('version', 'unknown')}")
 
               for section in (
                   "dependencies",
@@ -156,12 +145,21 @@ jobs:
                   "devDependencies",
                   "peerDependencies",
               ):
-                  deps = parent_info.get(section, {})
-                  if isinstance(deps, dict) and "crypto-js" in deps:
-                      print(f"Parent {section} declaration: {deps['crypto-js']}")
+                  deps = data.get(section, {})
+                  if not isinstance(deps, dict):
+                      continue
+
+                  for name in sorted(targets.intersection(deps)):
+                      found += 1
+                      print(
+                          f"{data.get('name', manifest.parent.name)}"
+                          f"@{data.get('version', 'unknown')} "
+                          f"declares {name}@{deps[name]} "
+                          f"({section})"
+                      )
 
           if not found:
-              print("No crypto-js package found in the lockfile.")
+              print("No installed package manifest directly declares crypto-js.")
           PY
 
 
