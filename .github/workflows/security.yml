@@ -313,6 +313,21 @@ jobs:
 
 
 
+      - name: Inspect express-jwt usage
+        if: always()
+        run: |
+          echo "express-jwt package declaration:"
+          grep -n -C 3 '"express-jwt"' juice-shop/package.json || true
+
+          echo "Application references:"
+          grep -R -n --include='*.js' --include='*.ts' \
+            --exclude-dir=node_modules \
+            --exclude-dir=frontend \
+            'express-jwt\|expressJwt\|expressJWT' \
+            juice-shop || true
+
+
+
       - name: Inspect Handlebars dependency configuration
         run: |
           python3 - <<'PY'
