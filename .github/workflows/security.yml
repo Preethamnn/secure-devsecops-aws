@@ -40,21 +40,26 @@ jobs:
           exit-code: '0'
 
       
-      - name: Apply Handlebars security override
+     
+      - name: Apply dependency security overrides
         working-directory: juice-shop
         run: |
           set -eu
 
           if [ -f package-lock.json ]; then
-            echo "A package-lock.json exists. Review lockfile handling before applying the override."
+            echo "Unexpected package-lock.json; review before proceeding."
             exit 1
           fi
 
           npm pkg set 'overrides.handlebars=4.7.10'
           npm pkg set 'overrides.crypto-js=4.2.0'
+          npm pkg set 'overrides.jsonwebtoken=9.0.0'
 
-          echo "Configured npm override:"
+          echo "Configured overrides:"
           node -e "console.log(JSON.stringify(require('./package.json').overrides, null, 2))"
+
+
+
 
       - name: Build Juice Shop Docker image
         run: docker build -t juice-shop:ci ./juice-shop
