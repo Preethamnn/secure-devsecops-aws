@@ -49,7 +49,7 @@ jobs:
           set -eu
 
           container_id=$(docker create juice-shop:ci)
-          trap 'docker rm -f "$container_id" >/dev/null 2>&1 || true; rm -rf image-rootfs' EXIT
+          trap 'docker rm -f "$container_id" >/dev/null 2>&1 || true' EXIT
 
           mkdir -p image-rootfs
           docker export "$container_id" | tar -xf - -C image-rootfs
