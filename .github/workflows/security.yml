@@ -118,7 +118,8 @@ jobs:
 
 
 
-      - name: Report vulnerable package versions
+      
+      - name: Trace crypto-js dependency
         if: always()
         run: |
           python3 - <<'PY'
@@ -126,33 +127,41 @@ jobs:
           from pathlib import Path
 
           lock = Path("image-rootfs/juice-shop/package-lock.json")
-          targets = {
-              "crypto-js", "handlebars", "jsonwebtoken",
-              "lodash", "tar", "moment"
-          }
-
           if not lock.exists():
-              print("ERROR: package-lock.json not found")
-              raise SystemExit(1)
+              raise SystemExit(f"ERROR: {lock} not found")
 
           data = json.loads(lock.read_text(encoding="utf-8"))
           packages = data.get("packages", {})
 
-          print("Package-lock version:", data.get("lockfileVersion"))
-          print("\nInstalled dependency locations:")
-
+          print("crypto-js installed instances and parent declarations:")
           found = 0
+
           for path, info in sorted(packages.items()):
-              if not path:
+              if not path or path.rsplit("node_modules/", 1)[-1] != "crypto-js":
                   continue
 
-              name = path.rsplit("node_modules/", 1)[-1]
-              if name in targets:
-                  print(f"{name:15} {info.get('version', 'unknown'):12} {path}")
-                  found += 1
+              found += 1
+              print(f"\nInstalled path: {path}")
+              print(f"Installed version: {info.get('version', 'unknown')}")
 
-          if found == 0:
-              print("No target packages found in package-lock.json")
+              parent_path = path.rsplit("/node_modules/", 1)[0]
+              parent_info = packages.get(parent_path, {})
+              parent_name = parent_info.get("name", parent_path or "root")
+              print(f"Nearest parent package: {parent_name}")
+              print(f"Parent version: {parent_info.get('version', 'unknown')}")
+
+              for section in (
+                  "dependencies",
+                  "optionalDependencies",
+                  "devDependencies",
+                  "peerDependencies",
+              ):
+                  deps = parent_info.get(section, {})
+                  if isinstance(deps, dict) and "crypto-js" in deps:
+                      print(f"Parent {section} declaration: {deps['crypto-js']}")
+
+          if not found:
+              print("No crypto-js package found in the lockfile.")
           PY
 
 
