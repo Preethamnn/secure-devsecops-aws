@@ -164,6 +164,55 @@ jobs:
 
 
 
+      - name: Inspect PDFKit and crypto-js dependency versions
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("image-rootfs/juice-shop/node_modules")
+
+          for relative in (
+              "pdfkit/package.json",
+              "crypto-js/package.json",
+          ):
+              path = root / relative
+              print(f"\n--- {relative} ---")
+
+              if not path.exists():
+                  print("Not found")
+                  continue
+
+              data = json.loads(path.read_text(encoding="utf-8"))
+              print("Name:", data.get("name"))
+              print("Version:", data.get("version"))
+              print(
+                  "crypto-js requirement:",
+                  data.get("dependencies", {}).get(
+                      "crypto-js", "not declared"
+                  )
+              )
+
+          print("\nAll installed packages declaring crypto-js:")
+          for manifest in sorted(root.rglob("package.json")):
+              try:
+                  data = json.loads(
+                      manifest.read_text(encoding="utf-8")
+                  )
+              except (OSError, json.JSONDecodeError):
+                  continue
+
+              requirement = data.get("dependencies", {}).get("crypto-js")
+              if requirement:
+                  print(
+                      f"{data.get('name', manifest.parent.name)}"
+                      f"@{data.get('version', 'unknown')}: {requirement}"
+                  )
+          PY
+
+
+
       - name: Inspect parent dependency declarations
         run: |
           python3 - <<'PY'
