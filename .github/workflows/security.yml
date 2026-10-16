@@ -212,6 +212,30 @@ jobs:
           PY
 
 
+      - name: Inspect PDFKit dependency metadata
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path(
+              "image-rootfs/juice-shop/node_modules/pdfkit/package.json"
+          )
+
+          if not path.exists():
+              raise SystemExit("PDFKit package.json not found")
+
+          data = json.loads(path.read_text(encoding="utf-8"))
+
+          print("PDFKit version:", data.get("version"))
+          print("PDFKit dependencies:")
+          print(json.dumps(data.get("dependencies", {}), indent=2))
+          print("PDFKit peer dependencies:")
+          print(json.dumps(data.get("peerDependencies", {}), indent=2))
+          PY
+
+
 
       - name: Inspect parent dependency declarations
         run: |
