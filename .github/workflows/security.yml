@@ -99,7 +99,6 @@ jobs:
           done
 
 
-
      
       - name: Inspect Juice Shop image filesystem
         continue-on-error: true
@@ -124,8 +123,6 @@ jobs:
 
 
 
-      
-      
       - name: Find crypto-js parent dependencies
         if: always()
         run: |
