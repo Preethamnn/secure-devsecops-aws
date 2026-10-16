@@ -59,6 +59,41 @@ jobs:
         run: docker build -t juice-shop:ci ./juice-shop
 
 
+      - name: Smoke test Juice Shop container
+        run: |
+          set -eu
+
+          docker run -d \
+            --name juice-shop-smoke \
+            -p 127.0.0.1:3000:3000 \
+            juice-shop:ci
+
+          cleanup() {
+            docker rm -f juice-shop-smoke >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          echo "Waiting for Juice Shop to become available..."
+
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent \
+              http://127.0.0.1:3000/ \
+              -o /dev/null; then
+              echo "PASS: Juice Shop HTTP endpoint responded successfully."
+              exit 0
+            fi
+
+            if [ "$attempt" -eq 30 ]; then
+              echo "FAIL: Juice Shop did not become ready."
+              docker logs juice-shop-smoke
+              exit 1
+            fi
+
+            sleep 2
+          done
+
+
+
      
       - name: Inspect Juice Shop image filesystem
         continue-on-error: true
