@@ -272,6 +272,47 @@ jobs:
 
 
 
+      - name: Trace jsonwebtoken parent dependencies
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("image-rootfs/juice-shop/node_modules")
+          found = 0
+
+          for manifest in sorted(root.rglob("package.json")):
+              try:
+                  data = json.loads(manifest.read_text(encoding="utf-8"))
+              except (OSError, json.JSONDecodeError):
+                  continue
+
+              for section in (
+                  "dependencies",
+                  "optionalDependencies",
+                  "devDependencies",
+                  "peerDependencies",
+              ):
+                  deps = data.get(section, {})
+                  if not isinstance(deps, dict):
+                      continue
+
+                  if "jsonwebtoken" in deps:
+                      found += 1
+                      print(
+                          f"{data.get('name', manifest.parent.name)}"
+                          f"@{data.get('version', 'unknown')} "
+                          f"declares jsonwebtoken@{deps['jsonwebtoken']} "
+                          f"({section})"
+                      )
+
+          if not found:
+              print("No installed package manifests declare jsonwebtoken.")
+          PY
+
+
+
       - name: Inspect Handlebars dependency configuration
         run: |
           python3 - <<'PY'
