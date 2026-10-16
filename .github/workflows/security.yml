@@ -328,6 +328,24 @@ jobs:
 
 
 
+      - name: Inspect authentication middleware implementation
+        if: always()
+        run: |
+          echo "Authentication middleware:"
+          sed -n '1,90p' juice-shop/lib/insecurity.ts
+
+          echo "Express JWT package metadata:"
+          node -e "
+            const p = require('./image-rootfs/juice-shop/node_modules/express-jwt/package.json');
+            console.log(JSON.stringify({
+              name: p.name,
+              version: p.version,
+              dependencies: p.dependencies
+            }, null, 2));
+          "
+
+
+
       - name: Inspect Handlebars dependency configuration
         run: |
           python3 - <<'PY'
