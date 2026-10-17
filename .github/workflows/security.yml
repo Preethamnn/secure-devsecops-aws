@@ -99,6 +99,7 @@ jobs:
 
 
       
+     
       - name: Test authentication and JWT signing
         run: |
           set -eu
@@ -132,29 +133,49 @@ jobs:
           fi
 
           echo "Checking login endpoint..."
-          response=$(curl -sS -o /tmp/login-response.json \
+          status=$(curl -sS -o /tmp/login-response.json \
             -w "%{http_code}" \
             -H "Content-Type: application/json" \
             -X POST \
             -d '{"email":"invalid-test-user@example.invalid","password":"invalid-test-password"}' \
             http://127.0.0.1:3001/rest/user/login)
 
-          echo "Login HTTP status: $response"
+          echo "Login HTTP status: $status"
 
-          if [ "$response" = "500" ]; then
+          if [ "$status" = "500" ]; then
             cat /tmp/login-response.json
             docker logs juice-shop-auth-test
+            echo "FAIL: Login endpoint returned an internal server error."
             exit 1
           fi
 
           echo "Checking root JWT signing and verification..."
-          docker exec juice-shop-auth-test node -e '
-            const jwt = require("/juice-shop/node_modules/jsonwebtoken");
-            const token = jwt.sign({sub:"ci-test"}, "ci-test-secret");
-            const decoded = jwt.verify(token, "ci-test-secret");
-            if (decoded.sub !== "ci-test") process.exit(1);
-            console.log("PASS: JWT signing and verification work.");
+
+          docker exec juice-shop-auth-test sh -c '
+            NODE_BIN=$(find / -type f -name node -executable 2>/dev/null | head -n 1)
+
+            if [ -z "$NODE_BIN" ]; then
+              echo "FAIL: Node.js executable not found in container."
+              exit 1
+            fi
+
+            export NODE_PATH=/juice-shop/node_modules
+            "$NODE_BIN" -e "
+              const jwt = require(\"/juice-shop/node_modules/jsonwebtoken\");
+              const token = jwt.sign({sub:\"ci-test\"}, \"ci-test-secret\");
+              const decoded = jwt.verify(token, \"ci-test-secret\");
+
+              if (decoded.sub !== \"ci-test\") {
+                console.error(\"FAIL: JWT verification returned unexpected data.\");
+                process.exit(1);
+              }
+
+              console.log(\"PASS: JWT signing and verification work.\");
+            "
           '
+
+          echo "PASS: Authentication compatibility checks completed."
+
 
 
      
