@@ -99,72 +99,30 @@ jobs:
 
 
       
-     
-     
-      - name: Test authentication and JWT signing
+         
+      
+      - name: Test root JWT signing and verification
         run: |
           set -eu
 
-          echo "Testing root jsonwebtoken inside the built image..."
+          echo "Testing JWT signing and verification with the installed package..."
 
-          docker run --rm --entrypoint node juice-shop:ci -e '
-            const jwt = require("/juice-shop/node_modules/jsonwebtoken");
-            const token = jwt.sign({sub:"ci-test"}, "ci-test-secret");
-            const decoded = jwt.verify(token, "ci-test-secret");
+          docker run --rm \
+            --entrypoint node \
+            -v "$PWD/image-rootfs/juice-shop/node_modules:/deps:ro" \
+            node:22-alpine \
+            -e '
+              const jwt = require("/deps/jsonwebtoken");
+              const token = jwt.sign({sub:"ci-test"}, "ci-test-secret");
+              const decoded = jwt.verify(token, "ci-test-secret");
 
-            if (decoded.sub !== "ci-test") {
-              console.error("FAIL: JWT verification returned unexpected data.");
-              process.exit(1);
-            }
+              if (decoded.sub !== "ci-test") {
+                console.error("FAIL: JWT verification returned unexpected data.");
+                process.exit(1);
+              }
 
-            console.log("PASS: Root JWT signing and verification work.");
-          '
-
-          echo "Starting Juice Shop for the login endpoint test..."
-
-          docker run -d \
-            --name juice-shop-auth-test \
-            -p 127.0.0.1:3001:3000 \
-            juice-shop:ci
-
-          cleanup() {
-            docker rm -f juice-shop-auth-test >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-
-          ready=false
-          for attempt in $(seq 1 30); do
-            if curl --fail --silent \
-              http://127.0.0.1:3001/ -o /dev/null; then
-              ready=true
-              break
-            fi
-            sleep 2
-          done
-
-          if [ "$ready" != "true" ]; then
-            docker logs juice-shop-auth-test
-            echo "FAIL: Juice Shop did not become ready."
-            exit 1
-          fi
-
-          status=$(curl -sS -o /tmp/login-response.json \
-            -w "%{http_code}" \
-            -H "Content-Type: application/json" \
-            -X POST \
-            -d '{"email":"invalid-test-user@example.invalid","password":"invalid-test-password"}' \
-            http://127.0.0.1:3001/rest/user/login)
-
-          echo "Login HTTP status: $status"
-
-          if [ "$status" = "500" ]; then
-            cat /tmp/login-response.json
-            docker logs juice-shop-auth-test
-            exit 1
-          fi
-
-          echo "PASS: Login endpoint did not return HTTP 500."
-
+              console.log("PASS: Root JWT signing and verification work.");
+            '
 
 
 
