@@ -53,6 +53,7 @@ jobs:
 
           npm pkg set 'overrides.handlebars=4.7.10'
           npm pkg set 'overrides.crypto-js=4.2.0'
+          npm pkg set 'dependencies.jsonwebtoken=9.0.0'
 
           echo "Configured overrides:"
           node -e "console.log(JSON.stringify(require('./package.json').overrides, null, 2))"
