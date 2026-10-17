@@ -60,7 +60,6 @@ jobs:
 
 
 
-
       - name: Build Juice Shop Docker image
         run: docker build -t juice-shop:ci ./juice-shop
 
