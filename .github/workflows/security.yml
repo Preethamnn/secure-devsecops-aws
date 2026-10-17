@@ -98,6 +98,36 @@ jobs:
           done
 
 
+      - name: Test authentication and JWT signing
+        run: |
+          set -eu
+
+          echo "Checking login endpoint..."
+          response=$(curl -sS -o /tmp/login-response.json \
+            -w "%{http_code}" \
+            -H "Content-Type: application/json" \
+            -X POST \
+            -d '{"email":"invalid-test-user@example.invalid","password":"invalid-test-password"}' \
+            http://127.0.0.1:3000/rest/user/login)
+
+          echo "Login HTTP status: $response"
+          cat /tmp/login-response.json
+
+          if [ "$response" = "500" ]; then
+            echo "FAIL: Login endpoint returned an internal server error."
+            docker logs juice-shop-smoke
+            exit 1
+          fi
+
+          echo "Checking root jsonwebtoken signing and verification..."
+          docker exec juice-shop-smoke node -e '
+            const jwt = require("/juice-shop/node_modules/jsonwebtoken");
+            const token = jwt.sign({sub:"ci-test"}, "ci-test-secret");
+            const decoded = jwt.verify(token, "ci-test-secret");
+            if (decoded.sub !== "ci-test") process.exit(1);
+            console.log("PASS: JWT signing and verification work.");
+          '
+
      
       - name: Inspect Juice Shop image filesystem
         continue-on-error: true
