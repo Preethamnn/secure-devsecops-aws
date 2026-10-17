@@ -452,6 +452,12 @@ jobs:
           PY
 
 
+      - name: Inspect authentication API usage
+        if: always()
+        run: |
+          grep -n -E 'expressJwt|express-jwt|jsonwebtoken|jwt\.sign|jwt\.verify|isAuthorized|denyAll|authorize' juice-shop/lib/insecurity.ts || true
+
+
       - name: Inspect Handlebars dependency configuration
         run: |
           python3 - <<'PY'
