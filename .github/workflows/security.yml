@@ -458,6 +458,23 @@ jobs:
           grep -n -E 'expressJwt|express-jwt|jsonwebtoken|jwt\.sign|jwt\.verify|isAuthorized|denyAll|authorize' juice-shop/lib/insecurity.ts || true
 
 
+      - name: Inspect root jsonwebtoken dependency
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("juice-shop/package.json")
+          data = json.loads(path.read_text(encoding="utf-8"))
+
+          print("Juice Shop version:", data.get("version"))
+          print("Declared jsonwebtoken version:",
+                data.get("dependencies", {}).get("jsonwebtoken"))
+          print("Existing jsonwebtoken override:",
+                data.get("overrides", {}).get("jsonwebtoken", "None"))
+          PY
+
 
       - name: Inspect authentication dependency tree
         if: always()
