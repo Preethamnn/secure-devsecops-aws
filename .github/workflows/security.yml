@@ -98,9 +98,38 @@ jobs:
           done
 
 
+      
       - name: Test authentication and JWT signing
         run: |
           set -eu
+
+          docker run -d \
+            --name juice-shop-auth-test \
+            -p 127.0.0.1:3001:3000 \
+            juice-shop:ci
+
+          cleanup() {
+            docker rm -f juice-shop-auth-test >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          echo "Waiting for Juice Shop..."
+          ready=false
+
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent \
+              http://127.0.0.1:3001/ -o /dev/null; then
+              ready=true
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$ready" != "true" ]; then
+            echo "FAIL: Juice Shop did not become ready."
+            docker logs juice-shop-auth-test
+            exit 1
+          fi
 
           echo "Checking login endpoint..."
           response=$(curl -sS -o /tmp/login-response.json \
@@ -108,25 +137,25 @@ jobs:
             -H "Content-Type: application/json" \
             -X POST \
             -d '{"email":"invalid-test-user@example.invalid","password":"invalid-test-password"}' \
-            http://127.0.0.1:3000/rest/user/login)
+            http://127.0.0.1:3001/rest/user/login)
 
           echo "Login HTTP status: $response"
-          cat /tmp/login-response.json
 
           if [ "$response" = "500" ]; then
-            echo "FAIL: Login endpoint returned an internal server error."
-            docker logs juice-shop-smoke
+            cat /tmp/login-response.json
+            docker logs juice-shop-auth-test
             exit 1
           fi
 
-          echo "Checking root jsonwebtoken signing and verification..."
-          docker exec juice-shop-smoke node -e '
+          echo "Checking root JWT signing and verification..."
+          docker exec juice-shop-auth-test node -e '
             const jwt = require("/juice-shop/node_modules/jsonwebtoken");
             const token = jwt.sign({sub:"ci-test"}, "ci-test-secret");
             const decoded = jwt.verify(token, "ci-test-secret");
             if (decoded.sub !== "ci-test") process.exit(1);
             console.log("PASS: JWT signing and verification work.");
           '
+
 
      
       - name: Inspect Juice Shop image filesystem
