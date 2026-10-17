@@ -40,21 +40,25 @@ jobs:
           exit-code: '0'
 
       
-      - name: Apply Handlebars security override
+     
+      - name: Apply dependency security overrides
         working-directory: juice-shop
         run: |
           set -eu
 
           if [ -f package-lock.json ]; then
-            echo "A package-lock.json exists. Review lockfile handling before applying the override."
+            echo "Unexpected package-lock.json; review before proceeding."
             exit 1
           fi
 
           npm pkg set 'overrides.handlebars=4.7.10'
           npm pkg set 'overrides.crypto-js=4.2.0'
+          npm pkg set 'dependencies.jsonwebtoken=9.0.0'
 
-          echo "Configured npm override:"
+          echo "Configured overrides:"
           node -e "console.log(JSON.stringify(require('./package.json').overrides, null, 2))"
+
+
 
       - name: Build Juice Shop Docker image
         run: docker build -t juice-shop:ci ./juice-shop
@@ -94,6 +98,33 @@ jobs:
           done
 
 
+      
+         
+      
+      - name: Test root JWT signing and verification
+        run: |
+          set -eu
+
+          echo "Testing JWT signing and verification with the installed package..."
+
+          docker run --rm \
+            --entrypoint node \
+            -v "$PWD/image-rootfs/juice-shop/node_modules:/deps:ro" \
+            node:22-alpine \
+            -e '
+              const jwt = require("/deps/jsonwebtoken");
+              const token = jwt.sign({sub:"ci-test"}, "ci-test-secret");
+              const decoded = jwt.verify(token, "ci-test-secret");
+
+              if (decoded.sub !== "ci-test") {
+                console.error("FAIL: JWT verification returned unexpected data.");
+                process.exit(1);
+              }
+
+              console.log("PASS: Root JWT signing and verification work.");
+            '
+
+
 
      
       - name: Inspect Juice Shop image filesystem
@@ -119,8 +150,6 @@ jobs:
 
 
 
-      
-      
       - name: Find crypto-js parent dependencies
         if: always()
         run: |
@@ -395,6 +424,91 @@ jobs:
                       print("Declared range:", declared)
                       break
           PY
+
+
+
+      - name: Inspect express-jwt compatibility
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("image-rootfs/juice-shop/node_modules")
+
+          targets = [
+              "express-jwt/package.json",
+              "express-jwt/node_modules/jsonwebtoken/package.json",
+              "jsonwebtoken/package.json",
+          ]
+
+          for relative in targets:
+              path = root / relative
+              print(f"\n--- {relative} ---")
+
+              if not path.exists():
+                  print("Not found")
+                  continue
+
+              data = json.loads(path.read_text(encoding="utf-8"))
+              print("Name:", data.get("name"))
+              print("Version:", data.get("version"))
+              print("Dependencies:", json.dumps(
+                  data.get("dependencies", {}), indent=2
+              ))
+              print("Entry point:", data.get("main"))
+          PY
+
+
+
+      - name: Inspect declared authentication dependencies
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          package_file = Path("juice-shop/package.json")
+          data = json.loads(package_file.read_text(encoding="utf-8"))
+
+          for section in ("dependencies", "devDependencies", "overrides"):
+              print(f"\n--- {section} ---")
+              entries = data.get(section, {})
+              for name in ("jsonwebtoken", "express-jwt", "jws", "moment"):
+                  if name in entries:
+                      print(f"{name}: {entries[name]}")
+          PY
+
+
+      - name: Inspect authentication API usage
+        if: always()
+        run: |
+          grep -n -E 'expressJwt|express-jwt|jsonwebtoken|jwt\.sign|jwt\.verify|isAuthorized|denyAll|authorize' juice-shop/lib/insecurity.ts || true
+
+
+      - name: Inspect root jsonwebtoken dependency
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("juice-shop/package.json")
+          data = json.loads(path.read_text(encoding="utf-8"))
+
+          print("Juice Shop version:", data.get("version"))
+          print("Declared jsonwebtoken version:",
+                data.get("dependencies", {}).get("jsonwebtoken"))
+          print("Existing jsonwebtoken override:",
+                data.get("overrides", {}).get("jsonwebtoken", "None"))
+          PY
+
+
+      - name: Inspect authentication dependency tree
+        if: always()
+        run: |
+          cd juice-shop
+          npm ls express-jwt jsonwebtoken jws moment --all || true
 
 
       - name: Inspect Handlebars dependency configuration
