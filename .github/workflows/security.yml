@@ -433,6 +433,25 @@ jobs:
 
 
 
+      - name: Inspect declared authentication dependencies
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          package_file = Path("juice-shop/package.json")
+          data = json.loads(package_file.read_text(encoding="utf-8"))
+
+          for section in ("dependencies", "devDependencies", "overrides"):
+              print(f"\n--- {section} ---")
+              entries = data.get(section, {})
+              for name in ("jsonwebtoken", "express-jwt", "jws", "moment"):
+                  if name in entries:
+                      print(f"{name}: {entries[name]}")
+          PY
+
+
       - name: Inspect Handlebars dependency configuration
         run: |
           python3 - <<'PY'
