@@ -98,6 +98,26 @@ jobs:
           done
 
 
+      - name: Inspect Juice Shop image filesystem
+        continue-on-error: true
+        run: |
+          set -eu
+
+          container_id=$(docker create juice-shop:ci)
+          trap 'docker rm -f "$container_id" >/dev/null 2>&1 || true' EXIT
+
+          mkdir -p image-rootfs
+          docker export "$container_id" | tar -xf - -C image-rootfs
+
+          echo "Checking package manifests and installed dependency locations:"
+          find image-rootfs -type f \( \
+            -name package.json -o \
+            -name package-lock.json -o \
+            -name yarn.lock -o \
+            -name pnpm-lock.yaml \
+          \) -print > dependency-tree.json
+
+          cat dependency-tree.json
       
          
       
@@ -127,27 +147,6 @@ jobs:
 
 
      
-      - name: Inspect Juice Shop image filesystem
-        continue-on-error: true
-        run: |
-          set -eu
-
-          container_id=$(docker create juice-shop:ci)
-          trap 'docker rm -f "$container_id" >/dev/null 2>&1 || true' EXIT
-
-          mkdir -p image-rootfs
-          docker export "$container_id" | tar -xf - -C image-rootfs
-
-          echo "Checking package manifests and installed dependency locations:"
-          find image-rootfs -type f \( \
-            -name package.json -o \
-            -name package-lock.json -o \
-            -name yarn.lock -o \
-            -name pnpm-lock.yaml \
-          \) -print > dependency-tree.json
-
-          cat dependency-tree.json
-
 
 
       - name: Find crypto-js parent dependencies
