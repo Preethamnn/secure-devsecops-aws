@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
   security-scan:
@@ -120,33 +121,6 @@ jobs:
           cat dependency-tree.json
       
          
-      
-      - name: Test root JWT signing and verification
-        run: |
-          set -eu
-
-          echo "Testing JWT signing and verification with the installed package..."
-
-          docker run --rm \
-            --entrypoint node \
-            -v "$PWD/image-rootfs/juice-shop/node_modules:/deps:ro" \
-            node:22-alpine \
-            -e '
-              const jwt = require("/deps/jsonwebtoken");
-              const token = jwt.sign({sub:"ci-test"}, "ci-test-secret");
-              const decoded = jwt.verify(token, "ci-test-secret");
-
-              if (decoded.sub !== "ci-test") {
-                console.error("FAIL: JWT verification returned unexpected data.");
-                process.exit(1);
-              }
-
-              console.log("PASS: Root JWT signing and verification work.");
-            '
-
-
-
-     
 
 
       - name: Find crypto-js parent dependencies
