@@ -39,6 +39,7 @@ variable "instance_type" {
 variable "key_name" {
   description = "Existing EC2 key pair name"
   type        = string
+  default     = "secure-devsecops-key"
 }
 
 data "aws_vpc" "default" {
@@ -114,15 +115,19 @@ resource "aws_instance" "juice_shop" {
     volume_type = "gp3"
   }
 
-  user_data = <<-EOF
+    user_data = <<-EOF
     #!/bin/bash
-    dnf update -y
+    set -euxo pipefail
+
     dnf install -y docker
     systemctl enable --now docker
+
+    docker pull ghcr.io/preethamnn/secure-devsecops-aws:latest
+
     docker run -d --restart unless-stopped \
       --name juice-shop \
-      --p 3000:3000 \
-      bkimminich/juice-shop
+      -p 3000:3000 \
+      ghcr.io/preethamnn/secure-devsecops-aws:latest
   EOF
 
   tags = {
