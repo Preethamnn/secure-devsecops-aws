@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
   security-scan:
@@ -40,21 +41,25 @@ jobs:
           exit-code: '0'
 
       
-      - name: Apply Handlebars security override
+     
+      - name: Apply dependency security overrides
         working-directory: juice-shop
         run: |
           set -eu
 
           if [ -f package-lock.json ]; then
-            echo "A package-lock.json exists. Review lockfile handling before applying the override."
+            echo "Unexpected package-lock.json; review before proceeding."
             exit 1
           fi
 
           npm pkg set 'overrides.handlebars=4.7.10'
           npm pkg set 'overrides.crypto-js=4.2.0'
+          npm pkg set 'dependencies.jsonwebtoken=9.0.0'
 
-          echo "Configured npm override:"
+          echo "Configured overrides:"
           node -e "console.log(JSON.stringify(require('./package.json').overrides, null, 2))"
+
+
 
       - name: Build Juice Shop Docker image
         run: docker build -t juice-shop:ci ./juice-shop
@@ -94,8 +99,6 @@ jobs:
           done
 
 
-
-     
       - name: Inspect Juice Shop image filesystem
         continue-on-error: true
         run: |
@@ -116,11 +119,10 @@ jobs:
           \) -print > dependency-tree.json
 
           cat dependency-tree.json
-
-
-
       
-      
+         
+
+
       - name: Find crypto-js parent dependencies
         if: always()
         run: |
@@ -397,6 +399,91 @@ jobs:
           PY
 
 
+
+      - name: Inspect express-jwt compatibility
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("image-rootfs/juice-shop/node_modules")
+
+          targets = [
+              "express-jwt/package.json",
+              "express-jwt/node_modules/jsonwebtoken/package.json",
+              "jsonwebtoken/package.json",
+          ]
+
+          for relative in targets:
+              path = root / relative
+              print(f"\n--- {relative} ---")
+
+              if not path.exists():
+                  print("Not found")
+                  continue
+
+              data = json.loads(path.read_text(encoding="utf-8"))
+              print("Name:", data.get("name"))
+              print("Version:", data.get("version"))
+              print("Dependencies:", json.dumps(
+                  data.get("dependencies", {}), indent=2
+              ))
+              print("Entry point:", data.get("main"))
+          PY
+
+
+
+      - name: Inspect declared authentication dependencies
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          package_file = Path("juice-shop/package.json")
+          data = json.loads(package_file.read_text(encoding="utf-8"))
+
+          for section in ("dependencies", "devDependencies", "overrides"):
+              print(f"\n--- {section} ---")
+              entries = data.get(section, {})
+              for name in ("jsonwebtoken", "express-jwt", "jws", "moment"):
+                  if name in entries:
+                      print(f"{name}: {entries[name]}")
+          PY
+
+
+      - name: Inspect authentication API usage
+        if: always()
+        run: |
+          grep -n -E 'expressJwt|express-jwt|jsonwebtoken|jwt\.sign|jwt\.verify|isAuthorized|denyAll|authorize' juice-shop/lib/insecurity.ts || true
+
+
+      - name: Inspect root jsonwebtoken dependency
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("juice-shop/package.json")
+          data = json.loads(path.read_text(encoding="utf-8"))
+
+          print("Juice Shop version:", data.get("version"))
+          print("Declared jsonwebtoken version:",
+                data.get("dependencies", {}).get("jsonwebtoken"))
+          print("Existing jsonwebtoken override:",
+                data.get("overrides", {}).get("jsonwebtoken", "None"))
+          PY
+
+
+      - name: Inspect authentication dependency tree
+        if: always()
+        run: |
+          cd juice-shop
+          npm ls express-jwt jsonwebtoken jws moment --all || true
+
+
       - name: Inspect Handlebars dependency configuration
         run: |
           python3 - <<'PY'
@@ -500,3 +587,22 @@ jobs:
             dependency-tree.json
           if-no-files-found: warn
           retention-days: 14
+
+
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag scanned image for GHCR
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: docker tag juice-shop:ci ghcr.io/${{ github.repository_owner }}/secure-devsecops-aws:latest
+
+      - name: Publish scanned image to GHCR
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: docker push ghcr.io/${{ github.repository_owner }}/secure-devsecops-aws:latest
+
