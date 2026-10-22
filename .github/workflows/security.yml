@@ -600,9 +600,9 @@ jobs:
 
       - name: Tag scanned image for GHCR
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        run: docker tag juice-shop:ci ghcr.io/${{ github.repository_owner }}/secure-devsecops-aws:latest
+        run: docker tag juice-shop:ci ghcr.io/preethamnn/secure-devsecops-aws:latest
 
       - name: Publish scanned image to GHCR
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        run: docker push ghcr.io/${{ github.repository_owner }}/secure-devsecops-aws:latest
+        run: docker push ghcr.io/preethamnn/secure-devsecops-aws:latest
 
