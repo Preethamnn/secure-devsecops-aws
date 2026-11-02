@@ -38,13 +38,6 @@ jobs:
           echo "Dockerfile:"
           sed -n '1,220p' juice-shop/Dockerfile
 
-      - name: Inspect express-jwt implementation
-        if: always()
-        run: |
-          echo "Express JWT implementation:"
-          find image-rootfs/juice-shop/node_modules/express-jwt/lib \
-            -type f -maxdepth 2 -print \
-            -exec sed -n '1,180p' {} \;
 
       - name: Scan source for misconfigurations and secrets
         uses: aquasecurity/trivy-action@v0.36.0
@@ -138,7 +131,31 @@ jobs:
           cat dependency-tree.json
 
 
-      
+      - name: Inspect express-jwt implementation
+        if: always()
+        run: |
+          TARGET="image-rootfs/juice-shop/node_modules/express-jwt"
+
+          if [ ! -d "$TARGET" ]; then
+            echo "express-jwt directory not found: $TARGET"
+            exit 1
+          fi
+
+          echo "Express JWT package files:"
+          find "$TARGET" -maxdepth 2 -type f -print
+
+          echo "Express JWT implementation:"
+          if [ -d "$TARGET/lib" ]; then
+            find "$TARGET/lib" -maxdepth 2 -type f \
+              -exec sh -c '
+                for file do
+                  echo "===== $file ====="
+                  sed -n "1,180p" "$file"
+                done
+              ' sh {} +
+          else
+            echo "No lib directory found."
+          fi      
       - name: Identify installed vulnerable dependencies
         if: always()
         run: |
@@ -179,7 +196,6 @@ jobs:
           PY
 
          
-
 
       - name: Find crypto-js parent dependencies
         if: always()
