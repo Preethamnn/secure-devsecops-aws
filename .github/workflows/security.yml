@@ -36,6 +36,14 @@ jobs:
           echo "=== challengeUtils.ts ==="
           grep -n -B 5 -A 10 "sanitizeHtml" juice-shop/lib/challengeUtils.ts || true
 
+      - name: Inspect sanitize-html dependency declaration
+        run: |
+          node -e "
+            const p = require('./juice-shop/package.json');
+            console.log('sanitize-html:', p.dependencies?.['sanitize-html']);
+            console.log('overrides:', JSON.stringify(p.overrides || {}, null, 2));
+          "
+
       - name: Inspect Juice Shop dependency declarations
         run: |
           echo "Express JWT and JSON Web Token declarations:"
