@@ -131,75 +131,50 @@ jobs:
 
           cat dependency-tree.json
 
-      - name: Inspect lodash and tar compatibility
+      - name: Inspect lodash and tar package compatibility
         if: always()
         run: |
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
+          node <<'NODE'
+          const fs = require('fs')
+          const path = require('path')
 
-          root = Path("image-rootfs/juice-shop/node_modules")
+          const root = path.resolve('image-rootfs/juice-shop/node_modules')
 
-          targets = {
-              "sanitize-html": ["lodash"],
-              "sqlite3": ["tar"],
-              "node-gyp": ["tar"],
-              "cacache": ["tar"]
+          const packages = [
+            'sanitize-html',
+            'sqlite3',
+            'tar',
+            'node-gyp',
+            'cacache'
+          ]
+
+          for (const name of packages) {
+            const packageFile = path.join(root, name, 'package.json')
+
+            if (!fs.existsSync(packageFile)) {
+              console.log(`\n${name}: not found at root`)
+              continue
+            }
+
+            const pkg = JSON.parse(fs.readFileSync(packageFile, 'utf8'))
+
+            console.log(`\n===== ${name} =====`)
+            console.log('Version:', pkg.version)
+            console.log('Dependencies:', JSON.stringify(pkg.dependencies || {}, null, 2))
+            console.log('Engines:', JSON.stringify(pkg.engines || {}, null, 2))
           }
+          NODE
 
-          for parent, dependencies in targets.items():
-              print(f"\n===== {parent} =====")
+          
+      - name: Inspect sanitize-html usage
+        if: always()
+        run: |
+          echo "Application imports:"
+          grep -R -n --include='*.ts' --include='*.js' \
+            --exclude-dir=node_modules \
+            "sanitize-html" juice-shop/lib juice-shop/routes || true
 
-              for manifest in sorted(root.rglob("package.json")):
-                  try:
-                      data = json.loads(manifest.read_text(encoding="utf-8"))
-                  except (OSError, json.JSONDecodeError):
-                      continue
-
-                  if data.get("name") != parent:
-                      continue
-
-                  print("Version:", data.get("version"))
-                  print("Location:", manifest)
-
-                  for dep in dependencies:
-                      print(
-                          f"{dep} requirement:",
-                          data.get("dependencies", {}).get(dep, "not declared")
-                      )
-
-                  package_dir = manifest.parent
-
-                  if parent == "sanitize-html":
-                      print("Relevant lodash usage:")
-                      for source in package_dir.rglob("*.js"):
-                          try:
-                              lines = source.read_text(
-                                  encoding="utf-8", errors="ignore"
-                              ).splitlines()
-                          except OSError:
-                              continue
-
-                          for number, line in enumerate(lines, 1):
-                              if "lodash" in line or "_." in line:
-                                  print(f"{source}:{number}: {line.strip()}")
-
-          print("\n===== Installed tar versions =====")
-
-          for manifest in sorted(root.rglob("package.json")):
-              try:
-                  data = json.loads(manifest.read_text(encoding="utf-8"))
-              except (OSError, json.JSONDecodeError):
-                  continue
-
-              if data.get("name") == "tar":
-                  print(
-                      data.get("version"),
-                      manifest
-                  )
-          PY
-
-
+            
       - name: Inspect express-jwt implementation
         if: always()
         run: |
