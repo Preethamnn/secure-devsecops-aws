@@ -131,6 +131,74 @@ jobs:
 
           cat dependency-tree.json
 
+      - name: Inspect lodash and tar compatibility
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("image-rootfs/juice-shop/node_modules")
+
+          targets = {
+              "sanitize-html": ["lodash"],
+              "sqlite3": ["tar"],
+              "node-gyp": ["tar"],
+              "cacache": ["tar"]
+          }
+
+          for parent, dependencies in targets.items():
+              print(f"\n===== {parent} =====")
+
+              for manifest in sorted(root.rglob("package.json")):
+                  try:
+                      data = json.loads(manifest.read_text(encoding="utf-8"))
+                  except (OSError, json.JSONDecodeError):
+                      continue
+
+                  if data.get("name") != parent:
+                      continue
+
+                  print("Version:", data.get("version"))
+                  print("Location:", manifest)
+
+                  for dep in dependencies:
+                      print(
+                          f"{dep} requirement:",
+                          data.get("dependencies", {}).get(dep, "not declared")
+                      )
+
+                  package_dir = manifest.parent
+
+                  if parent == "sanitize-html":
+                      print("Relevant lodash usage:")
+                      for source in package_dir.rglob("*.js"):
+                          try:
+                              lines = source.read_text(
+                                  encoding="utf-8", errors="ignore"
+                              ).splitlines()
+                          except OSError:
+                              continue
+
+                          for number, line in enumerate(lines, 1):
+                              if "lodash" in line or "_." in line:
+                                  print(f"{source}:{number}: {line.strip()}")
+
+          print("\n===== Installed tar versions =====")
+
+          for manifest in sorted(root.rglob("package.json")):
+              try:
+                  data = json.loads(manifest.read_text(encoding="utf-8"))
+              except (OSError, json.JSONDecodeError):
+                  continue
+
+              if data.get("name") == "tar":
+                  print(
+                      data.get("version"),
+                      manifest
+                  )
+          PY
+
 
       - name: Inspect express-jwt implementation
         if: always()
