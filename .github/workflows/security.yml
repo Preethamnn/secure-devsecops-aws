@@ -29,6 +29,23 @@ jobs:
           ref: v20.3.0
           path: juice-shop
 
+
+      - name: Inspect Juice Shop dependency declarations
+        run: |
+          echo "Express JWT and JSON Web Token declarations:"
+          grep -n -C 3 -E '"express-jwt"|"jsonwebtoken"|"overrides"' juice-shop/package.json
+
+          echo "Dockerfile:"
+          sed -n '1,220p' juice-shop/Dockerfile
+
+      - name: Inspect express-jwt implementation
+        if: always()
+        run: |
+          echo "Express JWT implementation:"
+          find image-rootfs/juice-shop/node_modules/express-jwt/lib \
+            -type f -maxdepth 2 -print \
+            -exec sed -n '1,180p' {} \;
+
       - name: Scan source for misconfigurations and secrets
         uses: aquasecurity/trivy-action@v0.36.0
         with:
