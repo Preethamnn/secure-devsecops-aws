@@ -29,6 +29,12 @@ jobs:
           ref: v20.3.0
           path: juice-shop
 
+      - name: Inspect sanitize-html usage
+        run: |
+          echo "=== insecurity.ts ==="
+          grep -n -B 5 -A 10 "sanitizeHtml" juice-shop/lib/insecurity.ts || true
+          echo "=== challengeUtils.ts ==="
+          grep -n -B 5 -A 10 "sanitizeHtml" juice-shop/lib/challengeUtils.ts || true
 
       - name: Inspect Juice Shop dependency declarations
         run: |
