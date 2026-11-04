@@ -381,7 +381,27 @@ jobs:
               ' sh {} +
           else
             echo "No lib directory found."
-          fi      
+          fi
+
+      - name: Inspect express-jwt dependency and usage
+        if: always()
+        run: |
+          echo "=== express-jwt package metadata ==="
+          node -e "
+            const p = require('./image-rootfs/juice-shop/node_modules/express-jwt/package.json');
+            console.log('Version:', p.version);
+            console.log('Dependencies:', JSON.stringify(p.dependencies || {}, null, 2));
+            console.log('Engines:', JSON.stringify(p.engines || {}, null, 2));
+          "
+
+          echo "=== express-jwt application usage ==="
+          grep -n -B 5 -A 12 "expressJwt" juice-shop/lib/insecurity.ts || true
+
+          echo "=== Latest express-jwt metadata ==="
+          npm view express-jwt version
+          npm view express-jwt@latest dependencies --json
+          npm view express-jwt@latest engines --json
+                
       - name: Identify installed vulnerable dependencies
         if: always()
         run: |
