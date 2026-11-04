@@ -401,7 +401,25 @@ jobs:
           npm view express-jwt version
           npm view express-jwt@latest dependencies --json
           npm view express-jwt@latest engines --json
-                
+
+      - name: Inspect modern express-jwt API
+        if: always()
+        run: |
+          echo "=== Latest express-jwt package metadata ==="
+          npm view express-jwt@8.5.1 exports --json
+          npm view express-jwt@8.5.1 types --json
+
+          echo "=== Current Juice Shop TypeScript configuration ==="
+          cat juice-shop/tsconfig.json
+
+          echo "=== express-jwt references ==="
+          grep -R -n \
+            --include='*.ts' \
+            --exclude-dir=node_modules \
+            "isAuthorized\|denyAll\|expressJwt" \
+            juice-shop/lib juice-shop/routes || true
+
+            
       - name: Identify installed vulnerable dependencies
         if: always()
         run: |
