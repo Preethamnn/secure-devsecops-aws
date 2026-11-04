@@ -479,7 +479,56 @@ jobs:
           npm view basic-ftp@6.2.1 dependencies --json
           npm view basic-ftp@6.2.1 engines --json
 
-          
+      - name: Find basic-ftp parent package
+        if: always()
+        run: |
+          node <<'NODE'
+          const fs = require('fs')
+          const path = require('path')
+
+          const root = path.resolve('image-rootfs/juice-shop/node_modules')
+
+          function inspect(dir) {
+            if (!fs.existsSync(dir)) return
+
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (!entry.isDirectory()) continue
+
+              const full = path.join(dir, entry.name)
+
+              if (entry.name === 'node_modules') {
+                inspect(full)
+                continue
+              }
+
+              const packageFile = path.join(full, 'package.json')
+
+              if (fs.existsSync(packageFile)) {
+                try {
+                  const pkg = JSON.parse(fs.readFileSync(packageFile, 'utf8'))
+
+                  const dependencies = {
+                    ...pkg.dependencies,
+                    ...pkg.optionalDependencies,
+                    ...pkg.peerDependencies
+                  }
+
+                  if (dependencies['basic-ftp']) {
+                    console.log(
+                      `${pkg.name}@${pkg.version} requires basic-ftp ${dependencies['basic-ftp']}`
+                    )
+                    console.log('Location:', full)
+                  }
+                } catch {}
+              }
+
+              inspect(full)
+            }
+          }
+
+          inspect(root)
+          NODE
+
       - name: Inspect modern express-jwt API
         if: always()
         run: |
