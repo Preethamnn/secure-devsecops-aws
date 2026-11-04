@@ -243,8 +243,6 @@ jobs:
           }
           NODE
 
-          
-          
       - name: Inspect sanitize-html usage
         if: always()
         run: |
@@ -734,9 +732,7 @@ jobs:
           output: trivy-image.json
           exit-code: '0'
 
-
-
-            - name: Summarize all Trivy vulnerabilities
+      - name: Summarize all Trivy vulnerabilities
         if: always()
         run: |
           python3 - <<'PY'
@@ -769,7 +765,6 @@ jobs:
               )
               print("  Location:", v.get("PkgPath", "unknown"))
           PY
-
 
       - name: Upload Trivy reports
         if: always()
