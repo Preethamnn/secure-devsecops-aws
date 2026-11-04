@@ -43,7 +43,12 @@ jobs:
             console.log('sanitize-html:', p.dependencies?.['sanitize-html']);
             console.log('overrides:', JSON.stringify(p.overrides || {}, null, 2));
           "
-
+      - name: Inspect sanitize-html upgrade compatibility
+        run: |
+          npm view sanitize-html version
+          npm view sanitize-html@latest dependencies --json
+          npm view sanitize-html@latest engines --json
+          
       - name: Inspect Juice Shop dependency declarations
         run: |
           echo "Express JWT and JSON Web Token declarations:"
