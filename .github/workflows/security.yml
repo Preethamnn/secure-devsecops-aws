@@ -86,6 +86,7 @@ jobs:
           npm pkg set 'dependencies.jsonwebtoken=9.0.0'
           npm pkg set 'overrides.express-jwt.jsonwebtoken=9.0.0'
           npm pkg set 'dependencies.sanitize-html=2.18.1'
+          npm pkg set 'dependencies.sqlite3=6.0.1'
 
           echo "Configured overrides:"
           node -e "console.log(JSON.stringify(require('./package.json').overrides, null, 2))"
@@ -246,7 +247,7 @@ jobs:
           echo "=== Latest SQLite package metadata ==="
           npm view sqlite3@6.0.1 peerDependencies --json
 
-          
+
       - name: Inspect lodash and tar package compatibility
         if: always()
         run: |
