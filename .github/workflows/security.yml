@@ -419,7 +419,21 @@ jobs:
             "isAuthorized\|denyAll\|expressJwt" \
             juice-shop/lib juice-shop/routes || true
 
-            
+      - name: Inspect express-jwt 8.5.1 TypeScript definitions
+        run: |
+          mkdir -p /tmp/express-jwt-check
+          cd /tmp/express-jwt-check
+
+          npm pack express-jwt@8.5.1
+
+          TARBALL=$(find . -maxdepth 1 -name 'express-jwt-*.tgz' | head -1)
+
+          echo "=== express-jwt TypeScript definitions ==="
+          tar -xOf "$TARBALL" package/dist/index.d.ts
+
+          echo "=== express-jwt package exports ==="
+          tar -xOf "$TARBALL" package/package.json
+          
       - name: Identify installed vulnerable dependencies
         if: always()
         run: |
