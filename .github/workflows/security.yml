@@ -208,6 +208,39 @@ jobs:
           searchFiles(sqliteDir)
           NODE
 
+      - name: Inspect minimatch dependency chain
+        if: always()
+        run: |
+          node <<'NODE'
+          const fs = require('fs')
+          const path = require('path')
+
+          const root = path.resolve('image-rootfs/juice-shop/node_modules')
+
+          const packages = [
+            'replace/package.json',
+            'replace/node_modules/minimatch/package.json'
+          ]
+
+          for (const relativePath of packages) {
+            const file = path.join(root, relativePath)
+
+            console.log(`\n===== ${relativePath} =====`)
+
+            if (!fs.existsSync(file)) {
+              console.log('Package not found')
+              continue
+            }
+
+            const pkg = JSON.parse(fs.readFileSync(file, 'utf8'))
+
+            console.log('Name:', pkg.name)
+            console.log('Version:', pkg.version)
+            console.log('Dependencies:', JSON.stringify(pkg.dependencies || {}, null, 2))
+            console.log('Engines:', JSON.stringify(pkg.engines || {}, null, 2))
+          }
+          NODE
+          
       - name: Inspect SQLite Tar compatibility
         if: always()
         run: |
