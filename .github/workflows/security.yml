@@ -211,20 +211,39 @@ jobs:
       - name: Inspect SQLite Tar compatibility
         if: always()
         run: |
-          echo "=== SQLite extraction implementation ==="
-          sed -n '1,220p' image-rootfs/juice-shop/node_modules/sqlite3/deps/extract.js
+          node <<'NODE'
+          const fs = require('fs')
+          const path = require('path')
 
-          echo "=== Installed Tar version and Node requirements ==="
-          node -e "
-            const p = require('./image-rootfs/juice-shop/node_modules/sqlite3/node_modules/tar/package.json');
-            console.log('Version:', p.version);
-            console.log('Engines:', p.engines);
-          "
+          const root = path.resolve('image-rootfs/juice-shop/node_modules')
 
-          echo "=== Latest SQLite package metadata ==="
-          npm view sqlite3 version
-          npm view sqlite3@latest dependencies --json
-          npm view sqlite3@latest engines --json
+          function findPackages(dir, packageName) {
+            if (!fs.existsSync(dir)) return
+
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (!entry.isDirectory()) continue
+
+              const full = path.join(dir, entry.name)
+
+              if (entry.name === packageName) {
+                const manifest = path.join(full, 'package.json')
+                if (fs.existsSync(manifest)) {
+                  const pkg = JSON.parse(fs.readFileSync(manifest, 'utf8'))
+                  console.log(`${pkg.name}@${pkg.version}: ${full}`)
+                }
+              }
+
+              if (entry.name === 'node_modules') {
+                findPackages(full, packageName)
+              }
+            }
+          }
+
+          for (const name of ['sqlite3', 'tar', 'node-gyp', 'cacache']) {
+            console.log(`\n=== ${name} installations ===`)
+            findPackages(root, name)
+          }
+          NODE
 
       - name: Inspect SQLite and Sequelize compatibility
         run: |
