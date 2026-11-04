@@ -209,6 +209,25 @@ jobs:
           searchFiles(sqliteDir)
           NODE
 
+      - name: Inspect SQLite Tar compatibility
+        if: always()
+        run: |
+          echo "=== SQLite extraction implementation ==="
+          sed -n '1,220p' image-rootfs/juice-shop/node_modules/sqlite3/deps/extract.js
+
+          echo "=== Installed Tar version and Node requirements ==="
+          node -e "
+            const p = require('./image-rootfs/juice-shop/node_modules/sqlite3/node_modules/tar/package.json');
+            console.log('Version:', p.version);
+            console.log('Engines:', p.engines);
+          "
+
+          echo "=== Latest SQLite package metadata ==="
+          npm view sqlite3 version
+          npm view sqlite3@latest dependencies --json
+          npm view sqlite3@latest engines --json
+
+        
       - name: Inspect lodash and tar package compatibility
         if: always()
         run: |
