@@ -208,7 +208,7 @@ jobs:
 
           searchFiles(sqliteDir)
           NODE
-          
+
       - name: Inspect lodash and tar package compatibility
         if: always()
         run: |
@@ -243,6 +243,7 @@ jobs:
           }
           NODE
 
+          
           
       - name: Inspect sanitize-html usage
         if: always()
