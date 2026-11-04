@@ -151,6 +151,64 @@ jobs:
 
           cat dependency-tree.json
 
+      - name: Inspect sqlite3 and tar dependency chain
+        if: always()
+        run: |
+          node <<'NODE'
+          const fs = require('fs')
+          const path = require('path')
+
+          const root = path.resolve('image-rootfs/juice-shop/node_modules')
+
+          const packages = [
+            'sqlite3/package.json',
+            'sqlite3/node_modules/tar/package.json',
+            'sqlite3/node_modules/node-gyp/package.json',
+            'sqlite3/node_modules/cacache/package.json'
+          ]
+
+          for (const relativePath of packages) {
+            const file = path.join(root, relativePath)
+
+            console.log(`\n===== ${relativePath} =====`)
+
+            if (!fs.existsSync(file)) {
+              console.log('Package not found')
+              continue
+            }
+
+            const pkg = JSON.parse(fs.readFileSync(file, 'utf8'))
+
+            console.log('Name:', pkg.name)
+            console.log('Version:', pkg.version)
+            console.log('Dependencies:', JSON.stringify(pkg.dependencies || {}, null, 2))
+            console.log('Scripts:', JSON.stringify(pkg.scripts || {}, null, 2))
+          }
+
+          console.log('\n===== Tar references inside sqlite3 =====')
+
+          const sqliteDir = path.join(root, 'sqlite3')
+
+          function searchFiles(dir) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const fullPath = path.join(dir, entry.name)
+
+              if (entry.isDirectory()) {
+                if (entry.name !== 'node_modules') searchFiles(fullPath)
+              } else if (entry.isFile() && /\.(js|json)$/.test(entry.name)) {
+                const content = fs.readFileSync(fullPath, 'utf8')
+                if (content.includes("require('tar')") ||
+                    content.includes('require("tar")') ||
+                    content.includes('from "tar"')) {
+                  console.log(path.relative(sqliteDir, fullPath))
+                }
+              }
+            }
+          }
+
+          searchFiles(sqliteDir)
+          NODE
+          
       - name: Inspect lodash and tar package compatibility
         if: always()
         run: |
@@ -677,40 +735,38 @@ jobs:
 
 
 
-      - name: Summarize vulnerable package instances
+            - name: Summarize all Trivy vulnerabilities
         if: always()
         run: |
           python3 - <<'PY'
           import json
-          from pathlib import Path
+          from collections import Counter
 
-          report = Path("trivy-image.json")
-          if not report.exists():
-              print("ERROR: trivy-image.json not found")
-              raise SystemExit(1)
+          with open("trivy-image.json") as f:
+              report = json.load(f)
 
-          data = json.loads(report.read_text(encoding="utf-8"))
-          targets = {
-              "crypto-js", "handlebars", "jsonwebtoken",
-              "lodash", "tar", "moment"
-          }
+          findings = []
 
-          print("Vulnerable package instances:")
-          count = 0
+          for result in report.get("Results", []):
+              for vuln in result.get("Vulnerabilities") or []:
+                  findings.append(vuln)
 
-          for result in data.get("Results", []):
-              for item in result.get("Vulnerabilities") or []:
-                  if item.get("PkgName") in targets:
-                      print(
-                          f"{item.get('Severity', 'UNKNOWN'):8} "
-                          f"{item.get('VulnerabilityID', 'N/A'):20} "
-                          f"{item.get('PkgName', 'N/A'):15} "
-                          f"{item.get('InstalledVersion', 'N/A'):12} "
-                          f"fixed={item.get('FixedVersion') or 'not specified'}"
-                      )
-                      count += 1
+          print("Total vulnerability records:", len(findings))
+          print("Severity breakdown:", dict(Counter(
+              v.get("Severity", "UNKNOWN") for v in findings
+          )))
 
-          print(f"\nTotal matching vulnerability records: {count}")
+          print("\nAll vulnerable package instances:")
+
+          for v in findings:
+              print(
+                  f"{v.get('Severity', 'UNKNOWN'):8} "
+                  f"{v.get('VulnerabilityID', ''):24} "
+                  f"{v.get('PkgName', ''):24} "
+                  f"{v.get('InstalledVersion', ''):12} "
+                  f"fixed={v.get('FixedVersion', '-')}"
+              )
+              print("  Location:", v.get("PkgPath", "unknown"))
           PY
 
 
