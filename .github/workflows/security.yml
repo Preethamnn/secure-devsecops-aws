@@ -87,6 +87,7 @@ jobs:
           npm pkg set 'overrides.express-jwt.jsonwebtoken=9.0.0'
           npm pkg set 'dependencies.sanitize-html=2.18.1'
           npm pkg set 'dependencies.sqlite3=6.0.1'
+          npm pkg set 'overrides.replace.minimatch=3.1.3'
 
           echo "Configured overrides:"
           node -e "console.log(JSON.stringify(require('./package.json').overrides, null, 2))"
@@ -255,7 +256,7 @@ jobs:
           echo "=== minimatch 3.1.3 metadata ==="
           npm view minimatch@3.1.3 version dependencies engines --json
 
-          
+
       - name: Inspect SQLite Tar compatibility
         if: always()
         run: |
