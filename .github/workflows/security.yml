@@ -93,7 +93,44 @@ jobs:
           echo "Configured overrides:"
           node -e "console.log(JSON.stringify(require('./package.json').overrides, null, 2))"
 
+      - name: Update express-jwt authentication API
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
 
+          file = Path("juice-shop/lib/insecurity.ts")
+          source = file.read_text()
+
+          old_import = "import expressJwt from 'express-jwt'"
+          new_import = "import { expressjwt } from 'express-jwt'"
+
+          if old_import not in source:
+              raise SystemExit("Expected express-jwt import not found")
+
+          source = source.replace(old_import, new_import)
+
+          old_middleware = """export const isAuthorized = () => expressJwt(({ secret: publicKey }) as any)
+          export const denyAll = () => expressJwt({ secret: '' + Math.random() } as any)"""
+
+          new_middleware = """export const isAuthorized = () => expressjwt({
+            secret: publicKey,
+            algorithms: ['RS256']
+          })
+          export const denyAll = () => expressjwt({
+            secret: '' + Math.random(),
+            algorithms: ['RS256']
+          })"""
+
+          if old_middleware not in source:
+              raise SystemExit("Expected authentication middleware not found")
+
+          source = source.replace(old_middleware, new_middleware)
+
+          file.write_text(source)
+          print("Successfully updated express-jwt authentication API")
+          PY
+
+          
       - name: Build Juice Shop Docker image
         run: docker build -t juice-shop:ci ./juice-shop
 
