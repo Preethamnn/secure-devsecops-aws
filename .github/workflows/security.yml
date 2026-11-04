@@ -529,6 +529,23 @@ jobs:
           inspect(root)
           NODE
 
+
+      - name: Inspect get-uri compatibility
+        if: always()
+        run: |
+          echo "=== Installed get-uri metadata ==="
+          node -e "
+            const p = require('./image-rootfs/juice-shop/node_modules/get-uri/package.json');
+            console.log('Version:', p.version);
+            console.log('Dependencies:', JSON.stringify(p.dependencies || {}, null, 2));
+            console.log('Engines:', JSON.stringify(p.engines || {}, null, 2));
+          "
+
+          echo "=== Latest get-uri metadata ==="
+          npm view get-uri version
+          npm view get-uri@latest dependencies --json
+          npm view get-uri@latest engines --json
+          
       - name: Inspect modern express-jwt API
         if: always()
         run: |
