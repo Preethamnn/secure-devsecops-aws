@@ -88,6 +88,7 @@ jobs:
           npm pkg set 'dependencies.sanitize-html=2.18.1'
           npm pkg set 'dependencies.sqlite3=6.0.1'
           npm pkg set 'overrides.replace.minimatch=3.1.4'
+          npm pkg set 'dependencies.express-jwt=8.5.1'
 
           echo "Configured overrides:"
           node -e "console.log(JSON.stringify(require('./package.json').overrides, null, 2))"
@@ -433,7 +434,7 @@ jobs:
 
           echo "=== express-jwt package exports ==="
           tar -xOf "$TARBALL" package/package.json
-          
+
       - name: Identify installed vulnerable dependencies
         if: always()
         run: |
