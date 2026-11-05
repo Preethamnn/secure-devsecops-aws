@@ -29,6 +29,35 @@ jobs:
           ref: v20.3.0
           path: juice-shop
 
+      - name: Inspect sanitize-html usage
+        run: |
+          echo "=== insecurity.ts ==="
+          grep -n -B 5 -A 10 "sanitizeHtml" juice-shop/lib/insecurity.ts || true
+          echo "=== challengeUtils.ts ==="
+          grep -n -B 5 -A 10 "sanitizeHtml" juice-shop/lib/challengeUtils.ts || true
+
+      - name: Inspect sanitize-html dependency declaration
+        run: |
+          node -e "
+            const p = require('./juice-shop/package.json');
+            console.log('sanitize-html:', p.dependencies?.['sanitize-html']);
+            console.log('overrides:', JSON.stringify(p.overrides || {}, null, 2));
+          "
+      - name: Inspect sanitize-html upgrade compatibility
+        run: |
+          npm view sanitize-html version
+          npm view sanitize-html@latest dependencies --json
+          npm view sanitize-html@latest engines --json
+
+      - name: Inspect Juice Shop dependency declarations
+        run: |
+          echo "Express JWT and JSON Web Token declarations:"
+          grep -n -C 3 -E '"express-jwt"|"jsonwebtoken"|"overrides"' juice-shop/package.json
+
+          echo "Dockerfile:"
+          sed -n '1,220p' juice-shop/Dockerfile
+
+
       - name: Scan source for misconfigurations and secrets
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -55,15 +84,59 @@ jobs:
           npm pkg set 'overrides.handlebars=4.7.10'
           npm pkg set 'overrides.crypto-js=4.2.0'
           npm pkg set 'dependencies.jsonwebtoken=9.0.0'
+          npm pkg set 'overrides.express-jwt.jsonwebtoken=9.0.0'
+          npm pkg set 'dependencies.sanitize-html=2.18.1'
+          npm pkg set 'dependencies.sqlite3=6.0.1'
+          npm pkg set 'overrides.replace.minimatch=3.1.4'
+          npm pkg set 'dependencies.express-jwt=8.5.1'
+          npm pkg set "overrides.get-uri.basic-ftp=6.2.1"
+          npm pkg set "overrides.cacheable-request.http-cache-semantics=4.1.1"
+          npm pkg set "overrides.query-string.decode-uri-component=0.5.1"
 
           echo "Configured overrides:"
           node -e "console.log(JSON.stringify(require('./package.json').overrides, null, 2))"
 
 
+      - name: Update express-jwt authentication API
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          file = Path("juice-shop/lib/insecurity.ts")
+          source = file.read_text()
+
+          old_import = "import expressJwt from 'express-jwt'"
+          new_import = "import { expressjwt } from 'express-jwt'"
+
+          if old_import not in source:
+              raise SystemExit("Expected express-jwt import not found")
+
+          source = source.replace(old_import, new_import)
+
+          old_middleware = """export const isAuthorized = () => expressJwt(({ secret: publicKey }) as any)
+          export const denyAll = () => expressJwt({ secret: '' + Math.random() } as any)"""
+
+          new_middleware = """export const isAuthorized = () => expressjwt({
+            secret: publicKey,
+            algorithms: ['RS256']
+          })
+          export const denyAll = () => expressjwt({
+            secret: '' + Math.random(),
+            algorithms: ['RS256']
+          })"""
+
+          if old_middleware not in source:
+              raise SystemExit("Expected authentication middleware not found")
+
+          source = source.replace(old_middleware, new_middleware)
+
+          file.write_text(source)
+          print("Successfully updated express-jwt authentication API")
+          PY
+
 
       - name: Build Juice Shop Docker image
         run: docker build -t juice-shop:ci ./juice-shop
-
 
       - name: Smoke test Juice Shop container
         run: |
@@ -98,7 +171,6 @@ jobs:
             sleep 2
           done
 
-
       - name: Inspect Juice Shop image filesystem
         continue-on-error: true
         run: |
@@ -119,9 +191,625 @@ jobs:
           \) -print > dependency-tree.json
 
           cat dependency-tree.json
-      
-         
 
+      - name: Verify remaining dependency remediations
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+
+          const root = 'image-rootfs/juice-shop/node_modules';
+
+          const expected = {
+            'http-cache-semantics': '4.1.1',
+            'decode-uri-component': '0.5.1',
+            'basic-ftp': '6.2.1'
+          };
+
+          const found = {};
+
+          function walk(dir) {
+            if (!fs.existsSync(dir)) return;
+
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (!entry.isDirectory()) continue;
+
+              const full = path.join(dir, entry.name);
+              const packageFile = path.join(full, 'package.json');
+
+              if (fs.existsSync(packageFile)) {
+                try {
+                  const pkg = JSON.parse(
+                    fs.readFileSync(packageFile, 'utf8')
+                  );
+
+                  if (Object.hasOwn(expected, pkg.name)) {
+                    found[pkg.name] ??= [];
+                    found[pkg.name].push({
+                      version: pkg.version,
+                      location: full
+                    });
+                  }
+                } catch (error) {
+                  console.log(`Could not read ${packageFile}`);
+                }
+              }
+
+              walk(full);
+            }
+          }
+
+          walk(root);
+
+          for (const [name, version] of Object.entries(expected)) {
+            const instances = found[name] || [];
+
+            if (instances.length === 0) {
+              throw new Error(`Package not found: ${name}`);
+            }
+
+            for (const instance of instances) {
+              console.log(
+                `${name}: ${instance.version} at ${instance.location}`
+              );
+
+              if (instance.version !== version) {
+                throw new Error(
+                  `Expected ${name}@${version}, found ${instance.version}`
+                );
+              }
+            }
+          }
+
+          console.log('All dependency remediation checks passed.');
+          NODE
+
+      - name: Inspect remaining vulnerable dependency parents
+        if: always()
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+
+          const root = 'image-rootfs/juice-shop/node_modules';
+          const targets = ['decode-uri-component', 'http-cache-semantics'];
+
+          function walk(dir) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (!entry.isDirectory()) continue;
+
+              const full = path.join(dir, entry.name);
+
+              if (entry.name.startsWith('@')) {
+                walk(full);
+                continue;
+              }
+
+              const packageFile = path.join(full, 'package.json');
+
+              if (fs.existsSync(packageFile)) {
+                try {
+                  const pkg = JSON.parse(fs.readFileSync(packageFile, 'utf8'));
+
+                  for (const target of targets) {
+                    const sections = [
+                      'dependencies',
+                      'devDependencies',
+                      'optionalDependencies',
+                      'peerDependencies'
+                    ];
+
+                    for (const section of sections) {
+                      const range = pkg[section]?.[target];
+
+                      if (range) {
+                        console.log(
+                          `${target}: ${pkg.name}@${pkg.version} requires ${range}`
+                        );
+                      }
+                    }
+                  }
+                } catch (error) {
+                  console.log(`Could not read ${packageFile}: ${error.message}`);
+                }
+              }
+
+              walk(full);
+            }
+          }
+
+          walk(root);
+          NODE
+
+      - name: Inspect remaining dependency compatibility
+        if: always()
+        run: |
+          echo "=== cacheable-request metadata ==="
+          npm view cacheable-request@2.1.4 dependencies --json
+          npm view cacheable-request@latest version
+          npm view cacheable-request@latest engines --json
+
+          echo "=== http-cache-semantics 4.1.1 metadata ==="
+          npm view http-cache-semantics@4.1.1 engines --json
+
+          echo "=== query-string metadata ==="
+          npm view query-string@5.1.1 dependencies --json
+          npm view query-string@latest version
+          npm view query-string@latest engines --json
+
+          echo "=== decode-uri-component 0.5.1 metadata ==="
+          npm view decode-uri-component@0.5.1 engines --json
+
+
+      - name: Verify basic-ftp remediation
+        run: |
+          echo "=== Verify installed basic-ftp version ==="
+          node -e "
+            const p = require('./image-rootfs/juice-shop/node_modules/basic-ftp/package.json');
+            console.log('Installed basic-ftp:', p.version);
+            if (p.version !== '6.2.1') {
+              throw new Error('Expected basic-ftp 6.2.1');
+            }
+          "
+
+      - name: Inspect sqlite3 and tar dependency chain
+        if: always()
+        run: |
+          node <<'NODE'
+          const fs = require('fs')
+          const path = require('path')
+
+          const root = path.resolve('image-rootfs/juice-shop/node_modules')
+
+          const packages = [
+            'sqlite3/package.json',
+            'sqlite3/node_modules/tar/package.json',
+            'sqlite3/node_modules/node-gyp/package.json',
+            'sqlite3/node_modules/cacache/package.json'
+          ]
+
+          for (const relativePath of packages) {
+            const file = path.join(root, relativePath)
+
+            console.log(`\n===== ${relativePath} =====`)
+
+            if (!fs.existsSync(file)) {
+              console.log('Package not found')
+              continue
+            }
+
+            const pkg = JSON.parse(fs.readFileSync(file, 'utf8'))
+
+            console.log('Name:', pkg.name)
+            console.log('Version:', pkg.version)
+            console.log('Dependencies:', JSON.stringify(pkg.dependencies || {}, null, 2))
+            console.log('Scripts:', JSON.stringify(pkg.scripts || {}, null, 2))
+          }
+
+          console.log('\n===== Tar references inside sqlite3 =====')
+
+          const sqliteDir = path.join(root, 'sqlite3')
+
+          function searchFiles(dir) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const fullPath = path.join(dir, entry.name)
+
+              if (entry.isDirectory()) {
+                if (entry.name !== 'node_modules') searchFiles(fullPath)
+              } else if (entry.isFile() && /\.(js|json)$/.test(entry.name)) {
+                const content = fs.readFileSync(fullPath, 'utf8')
+                if (content.includes("require('tar')") ||
+                    content.includes('require("tar")') ||
+                    content.includes('from "tar"')) {
+                  console.log(path.relative(sqliteDir, fullPath))
+                }
+              }
+            }
+          }
+
+          searchFiles(sqliteDir)
+          NODE
+
+      - name: Inspect minimatch dependency chain
+        if: always()
+        run: |
+          node <<'NODE'
+          const fs = require('fs')
+          const path = require('path')
+
+          const root = path.resolve('image-rootfs/juice-shop/node_modules')
+
+          const packages = [
+            'replace/package.json',
+            'replace/node_modules/minimatch/package.json'
+          ]
+
+          for (const relativePath of packages) {
+            const file = path.join(root, relativePath)
+
+            console.log(`\n===== ${relativePath} =====`)
+
+            if (!fs.existsSync(file)) {
+              console.log('Package not found')
+              continue
+            }
+
+            const pkg = JSON.parse(fs.readFileSync(file, 'utf8'))
+
+            console.log('Name:', pkg.name)
+            console.log('Version:', pkg.version)
+            console.log('Dependencies:', JSON.stringify(pkg.dependencies || {}, null, 2))
+            console.log('Engines:', JSON.stringify(pkg.engines || {}, null, 2))
+          }
+          NODE
+
+
+      - name: Inspect replace minimatch usage
+        if: always()
+        run: |
+          echo "=== replace package minimatch usage ==="
+          grep -R -n \
+            --include='*.js' \
+            --exclude-dir=node_modules \
+            "minimatch" \
+            image-rootfs/juice-shop/node_modules/replace || true
+
+          echo "=== minimatch 3.1.3 metadata ==="
+          npm view minimatch@3.1.3 version dependencies engines --json
+
+
+      - name: Inspect SQLite Tar compatibility
+        if: always()
+        run: |
+          node <<'NODE'
+          const fs = require('fs')
+          const path = require('path')
+
+          const root = path.resolve('image-rootfs/juice-shop/node_modules')
+
+          function findPackages(dir, packageName) {
+            if (!fs.existsSync(dir)) return
+
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (!entry.isDirectory()) continue
+
+              const full = path.join(dir, entry.name)
+
+              if (entry.name === packageName) {
+                const manifest = path.join(full, 'package.json')
+                if (fs.existsSync(manifest)) {
+                  const pkg = JSON.parse(fs.readFileSync(manifest, 'utf8'))
+                  console.log(`${pkg.name}@${pkg.version}: ${full}`)
+                }
+              }
+
+              if (entry.name === 'node_modules') {
+                findPackages(full, packageName)
+              }
+            }
+          }
+
+          for (const name of ['sqlite3', 'tar', 'node-gyp', 'cacache']) {
+            console.log(`\n=== ${name} installations ===`)
+            findPackages(root, name)
+          }
+          NODE
+
+      - name: Inspect SQLite and Sequelize compatibility
+        run: |
+          echo "=== Juice Shop SQLite dependency ==="
+          node -e "
+            const p = require('./juice-shop/package.json');
+            console.log('sqlite3:', p.dependencies?.sqlite3);
+            console.log('sequelize:', p.dependencies?.sequelize);
+          "
+
+          echo "=== Installed Sequelize peer dependencies ==="
+          node -e "
+            const p = require('./image-rootfs/juice-shop/node_modules/sequelize/package.json');
+            console.log('Version:', p.version);
+            console.log('Peer dependencies:', JSON.stringify(p.peerDependencies || {}, null, 2));
+          "
+
+          echo "=== Latest SQLite package metadata ==="
+          npm view sqlite3@6.0.1 peerDependencies --json
+
+
+      - name: Inspect lodash and tar package compatibility
+        if: always()
+        run: |
+          node <<'NODE'
+          const fs = require('fs')
+          const path = require('path')
+
+          const root = path.resolve('image-rootfs/juice-shop/node_modules')
+
+          const packages = [
+            'sanitize-html',
+            'sqlite3',
+            'tar',
+            'node-gyp',
+            'cacache'
+          ]
+
+          for (const name of packages) {
+            const packageFile = path.join(root, name, 'package.json')
+
+            if (!fs.existsSync(packageFile)) {
+              console.log(`\n${name}: not found at root`)
+              continue
+            }
+
+            const pkg = JSON.parse(fs.readFileSync(packageFile, 'utf8'))
+
+            console.log(`\n===== ${name} =====`)
+            console.log('Version:', pkg.version)
+            console.log('Dependencies:', JSON.stringify(pkg.dependencies || {}, null, 2))
+            console.log('Engines:', JSON.stringify(pkg.engines || {}, null, 2))
+          }
+          NODE
+
+      - name: Inspect sanitize-html usage
+        if: always()
+        run: |
+          echo "Application imports:"
+          grep -R -n --include='*.ts' --include='*.js' \
+            --exclude-dir=node_modules \
+            "sanitize-html" juice-shop/lib juice-shop/routes || true
+
+            
+      - name: Inspect express-jwt implementation
+        if: always()
+        run: |
+          TARGET="image-rootfs/juice-shop/node_modules/express-jwt"
+
+          if [ ! -d "$TARGET" ]; then
+            echo "express-jwt directory not found: $TARGET"
+            exit 1
+          fi
+
+          echo "Express JWT package files:"
+          find "$TARGET" -maxdepth 2 -type f -print
+
+          echo "Express JWT implementation:"
+          if [ -d "$TARGET/lib" ]; then
+            find "$TARGET/lib" -maxdepth 2 -type f \
+              -exec sh -c '
+                for file do
+                  echo "===== $file ====="
+                  sed -n "1,180p" "$file"
+                done
+              ' sh {} +
+          else
+            echo "No lib directory found."
+          fi
+
+      - name: Inspect express-jwt dependency and usage
+        if: always()
+        run: |
+          echo "=== express-jwt package metadata ==="
+          node -e "
+            const p = require('./image-rootfs/juice-shop/node_modules/express-jwt/package.json');
+            console.log('Version:', p.version);
+            console.log('Dependencies:', JSON.stringify(p.dependencies || {}, null, 2));
+            console.log('Engines:', JSON.stringify(p.engines || {}, null, 2));
+          "
+
+          echo "=== express-jwt application usage ==="
+          grep -n -B 5 -A 12 "expressJwt" juice-shop/lib/insecurity.ts || true
+
+          echo "=== Latest express-jwt metadata ==="
+          npm view express-jwt version
+          npm view express-jwt@latest dependencies --json
+          npm view express-jwt@latest engines --json
+
+      - name: Inspect basic-ftp dependency chain
+        if: always()
+        run: |
+          node <<'NODE'
+          const fs = require('fs')
+          const path = require('path')
+
+          const root = path.resolve('image-rootfs/juice-shop/node_modules')
+
+          const packages = [
+            'basic-ftp/package.json'
+          ]
+
+          for (const relativePath of packages) {
+            const file = path.join(root, relativePath)
+
+            console.log(`\n===== ${relativePath} =====`)
+
+            if (!fs.existsSync(file)) {
+              console.log('Package not found')
+              continue
+            }
+
+            const pkg = JSON.parse(fs.readFileSync(file, 'utf8'))
+
+            console.log('Name:', pkg.name)
+            console.log('Version:', pkg.version)
+            console.log('Dependencies:', JSON.stringify(pkg.dependencies || {}, null, 2))
+            console.log('Engines:', JSON.stringify(pkg.engines || {}, null, 2))
+          }
+          NODE
+
+          echo "=== basic-ftp parent dependency ==="
+          npm explain basic-ftp --prefix juice-shop || true
+
+          echo "=== Latest basic-ftp metadata ==="
+          npm view basic-ftp@6.2.1 dependencies --json
+          npm view basic-ftp@6.2.1 engines --json
+
+      - name: Find basic-ftp parent package
+        if: always()
+        run: |
+          node <<'NODE'
+          const fs = require('fs')
+          const path = require('path')
+
+          const root = path.resolve('image-rootfs/juice-shop/node_modules')
+
+          function inspect(dir) {
+            if (!fs.existsSync(dir)) return
+
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (!entry.isDirectory()) continue
+
+              const full = path.join(dir, entry.name)
+
+              if (entry.name === 'node_modules') {
+                inspect(full)
+                continue
+              }
+
+              const packageFile = path.join(full, 'package.json')
+
+              if (fs.existsSync(packageFile)) {
+                try {
+                  const pkg = JSON.parse(fs.readFileSync(packageFile, 'utf8'))
+
+                  const dependencies = {
+                    ...pkg.dependencies,
+                    ...pkg.optionalDependencies,
+                    ...pkg.peerDependencies
+                  }
+
+                  if (dependencies['basic-ftp']) {
+                    console.log(
+                      `${pkg.name}@${pkg.version} requires basic-ftp ${dependencies['basic-ftp']}`
+                    )
+                    console.log('Location:', full)
+                  }
+                } catch {}
+              }
+
+              inspect(full)
+            }
+          }
+
+          inspect(root)
+          NODE
+
+
+      - name: Inspect get-uri compatibility
+        if: always()
+        run: |
+          echo "=== Installed get-uri metadata ==="
+          node -e "
+            const p = require('./image-rootfs/juice-shop/node_modules/get-uri/package.json');
+            console.log('Version:', p.version);
+            console.log('Dependencies:', JSON.stringify(p.dependencies || {}, null, 2));
+            console.log('Engines:', JSON.stringify(p.engines || {}, null, 2));
+          "
+
+          echo "=== Latest get-uri metadata ==="
+          npm view get-uri version
+          npm view get-uri@latest dependencies --json
+          npm view get-uri@latest engines --json
+
+      - name: Inspect basic-ftp API compatibility
+        if: always()
+        run: |
+          echo "=== get-uri FTP implementation ==="
+          grep -R -n -E "basic-ftp|Client\\(|access\\(|downloadTo\\(|list\\(" \
+            image-rootfs/juice-shop/node_modules/get-uri
+
+          echo "=== basic-ftp 5.3.1 metadata ==="
+          npm view basic-ftp@5.3.1 engines --json
+
+          echo "=== basic-ftp 6.2.1 metadata ==="
+          npm view basic-ftp@6.2.1 engines --json
+          npm view basic-ftp@6.2.1 types
+
+      - name: Inspect basic-ftp 6.2.1 API
+        if: always()
+        run: |
+          echo "=== basic-ftp 6.2.1 package exports ==="
+          npm view basic-ftp@6.2.1 exports --json
+          npm view basic-ftp@6.2.1 types
+
+          echo "=== basic-ftp 6.2.1 API declarations ==="
+          npm pack basic-ftp@6.2.1 --pack-destination /tmp
+          mkdir -p /tmp/basic-ftp-check
+          tar -xzf /tmp/basic-ftp-6.2.1.tgz -C /tmp/basic-ftp-check
+
+          grep -R -n -E "class Client|access\\(|list\\(|downloadTo\\(" \
+            /tmp/basic-ftp-check/package/dist
+
+      - name: Inspect modern express-jwt API
+        if: always()
+        run: |
+          echo "=== Latest express-jwt package metadata ==="
+          npm view express-jwt@8.5.1 exports --json
+          npm view express-jwt@8.5.1 types --json
+
+          echo "=== Current Juice Shop TypeScript configuration ==="
+          cat juice-shop/tsconfig.json
+
+          echo "=== express-jwt references ==="
+          grep -R -n \
+            --include='*.ts' \
+            --exclude-dir=node_modules \
+            "isAuthorized\|denyAll\|expressJwt" \
+            juice-shop/lib juice-shop/routes || true
+
+      - name: Inspect express-jwt 8.5.1 TypeScript definitions
+        run: |
+          mkdir -p /tmp/express-jwt-check
+          cd /tmp/express-jwt-check
+
+          npm pack express-jwt@8.5.1
+
+          TARBALL=$(find . -maxdepth 1 -name 'express-jwt-*.tgz' | head -1)
+
+          echo "=== express-jwt TypeScript definitions ==="
+          tar -xOf "$TARBALL" package/dist/index.d.ts
+
+          echo "=== express-jwt package exports ==="
+          tar -xOf "$TARBALL" package/package.json
+
+      - name: Identify installed vulnerable dependencies
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("image-rootfs")
+
+          targets = {
+              "jsonwebtoken",
+              "jws",
+              "lodash",
+              "tar",
+              "minimatch",
+              "moment",
+              "handlebars",
+              "crypto-js"
+          }
+
+          print("Installed vulnerable dependency instances:")
+
+          for manifest in sorted(root.rglob("package.json")):
+              try:
+                  data = json.loads(
+                      manifest.read_text(encoding="utf-8")
+                  )
+              except (OSError, json.JSONDecodeError):
+                  continue
+
+              name = data.get("name")
+
+              if name in targets:
+                  print(
+                      f"{name}@{data.get('version', 'unknown')} "
+                      f"| {manifest}"
+                  )
+          PY
+
+         
 
       - name: Find crypto-js parent dependencies
         if: always()
@@ -537,44 +1225,39 @@ jobs:
           output: trivy-image.json
           exit-code: '0'
 
-
-
-      - name: Summarize vulnerable package instances
+      - name: Summarize all Trivy vulnerabilities
         if: always()
         run: |
           python3 - <<'PY'
           import json
-          from pathlib import Path
+          from collections import Counter
 
-          report = Path("trivy-image.json")
-          if not report.exists():
-              print("ERROR: trivy-image.json not found")
-              raise SystemExit(1)
+          with open("trivy-image.json") as f:
+              report = json.load(f)
 
-          data = json.loads(report.read_text(encoding="utf-8"))
-          targets = {
-              "crypto-js", "handlebars", "jsonwebtoken",
-              "lodash", "tar", "moment"
-          }
+          findings = []
 
-          print("Vulnerable package instances:")
-          count = 0
+          for result in report.get("Results", []):
+              for vuln in result.get("Vulnerabilities") or []:
+                  findings.append(vuln)
 
-          for result in data.get("Results", []):
-              for item in result.get("Vulnerabilities") or []:
-                  if item.get("PkgName") in targets:
-                      print(
-                          f"{item.get('Severity', 'UNKNOWN'):8} "
-                          f"{item.get('VulnerabilityID', 'N/A'):20} "
-                          f"{item.get('PkgName', 'N/A'):15} "
-                          f"{item.get('InstalledVersion', 'N/A'):12} "
-                          f"fixed={item.get('FixedVersion') or 'not specified'}"
-                      )
-                      count += 1
+          print("Total vulnerability records:", len(findings))
+          print("Severity breakdown:", dict(Counter(
+              v.get("Severity", "UNKNOWN") for v in findings
+          )))
 
-          print(f"\nTotal matching vulnerability records: {count}")
+          print("\nAll vulnerable package instances:")
+
+          for v in findings:
+              print(
+                  f"{v.get('Severity', 'UNKNOWN'):8} "
+                  f"{v.get('VulnerabilityID', ''):24} "
+                  f"{v.get('PkgName', ''):24} "
+                  f"{v.get('InstalledVersion', ''):12} "
+                  f"fixed={v.get('FixedVersion', '-')}"
+              )
+              print("  Location:", v.get("PkgPath", "unknown"))
           PY
-
 
       - name: Upload Trivy reports
         if: always()
