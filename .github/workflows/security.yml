@@ -247,6 +247,26 @@ jobs:
 
           walk(root);
           NODE
+
+      - name: Inspect remaining dependency compatibility
+        if: always()
+        run: |
+          echo "=== cacheable-request metadata ==="
+          npm view cacheable-request@2.1.4 dependencies --json
+          npm view cacheable-request@latest version
+          npm view cacheable-request@latest engines --json
+
+          echo "=== http-cache-semantics 4.1.1 metadata ==="
+          npm view http-cache-semantics@4.1.1 engines --json
+
+          echo "=== query-string metadata ==="
+          npm view query-string@5.1.1 dependencies --json
+          npm view query-string@latest version
+          npm view query-string@latest engines --json
+
+          echo "=== decode-uri-component 0.5.1 metadata ==="
+          npm view decode-uri-component@0.5.1 engines --json
+
           
       - name: Verify basic-ftp remediation
         run: |
