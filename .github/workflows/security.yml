@@ -191,6 +191,63 @@ jobs:
 
           cat dependency-tree.json
 
+      - name: Inspect remaining vulnerable dependency parents
+        if: always()
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+
+          const root = 'image-rootfs/juice-shop/node_modules';
+          const targets = ['decode-uri-component', 'http-cache-semantics'];
+
+          function walk(dir) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (!entry.isDirectory()) continue;
+
+              const full = path.join(dir, entry.name);
+
+              if (entry.name.startsWith('@')) {
+                walk(full);
+                continue;
+              }
+
+              const packageFile = path.join(full, 'package.json');
+
+              if (fs.existsSync(packageFile)) {
+                try {
+                  const pkg = JSON.parse(fs.readFileSync(packageFile, 'utf8'));
+
+                  for (const target of targets) {
+                    const sections = [
+                      'dependencies',
+                      'devDependencies',
+                      'optionalDependencies',
+                      'peerDependencies'
+                    ];
+
+                    for (const section of sections) {
+                      const range = pkg[section]?.[target];
+
+                      if (range) {
+                        console.log(
+                          `${target}: ${pkg.name}@${pkg.version} requires ${range}`
+                        );
+                      }
+                    }
+                  }
+                } catch (error) {
+                  console.log(`Could not read ${packageFile}: ${error.message}`);
+                }
+              }
+
+              walk(full);
+            }
+          }
+
+          walk(root);
+          NODE
+          
       - name: Verify basic-ftp remediation
         run: |
           echo "=== Verify installed basic-ftp version ==="
@@ -201,7 +258,7 @@ jobs:
               throw new Error('Expected basic-ftp 6.2.1');
             }
           "
-          
+
       - name: Inspect sqlite3 and tar dependency chain
         if: always()
         run: |
