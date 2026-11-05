@@ -90,6 +90,8 @@ jobs:
           npm pkg set 'overrides.replace.minimatch=3.1.4'
           npm pkg set 'dependencies.express-jwt=8.5.1'
           npm pkg set "overrides.get-uri.basic-ftp=6.2.1"
+          npm pkg set "overrides.cacheable-request.http-cache-semantics=4.1.1"
+          npm pkg set "overrides.query-string.decode-uri-component=0.5.1"
 
           echo "Configured overrides:"
           node -e "console.log(JSON.stringify(require('./package.json').overrides, null, 2))"
@@ -169,7 +171,27 @@ jobs:
             sleep 2
           done
 
+      - name: Verify remaining dependency remediations
+        working-directory: juice-shop
+        run: |
+          npm ls http-cache-semantics decode-uri-component
 
+          node -e "
+            const packages = [
+              ['http-cache-semantics', '4.1.1'],
+              ['decode-uri-component', '0.5.1']
+            ];
+
+            for (const [name, expected] of packages) {
+              const p = require(name + '/package.json');
+              console.log(name + ': ' + p.version);
+
+              if (p.version !== expected) {
+                throw new Error('Expected ' + name + '@' + expected);
+              }
+            }
+          "
+          
       - name: Inspect Juice Shop image filesystem
         continue-on-error: true
         run: |
@@ -267,7 +289,7 @@ jobs:
           echo "=== decode-uri-component 0.5.1 metadata ==="
           npm view decode-uri-component@0.5.1 engines --json
 
-          
+
       - name: Verify basic-ftp remediation
         run: |
           echo "=== Verify installed basic-ftp version ==="
