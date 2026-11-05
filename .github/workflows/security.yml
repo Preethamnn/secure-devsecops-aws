@@ -560,7 +560,21 @@ jobs:
           npm view basic-ftp@6.2.1 engines --json
           npm view basic-ftp@6.2.1 types
 
-          
+      - name: Inspect basic-ftp 6.2.1 API
+        if: always()
+        run: |
+          echo "=== basic-ftp 6.2.1 package exports ==="
+          npm view basic-ftp@6.2.1 exports --json
+          npm view basic-ftp@6.2.1 types
+
+          echo "=== basic-ftp 6.2.1 API declarations ==="
+          npm pack basic-ftp@6.2.1 --pack-destination /tmp
+          mkdir -p /tmp/basic-ftp-check
+          tar -xzf /tmp/basic-ftp-6.2.1.tgz -C /tmp/basic-ftp-check
+
+          grep -R -n -E "class Client|access\\(|list\\(|downloadTo\\(" \
+            /tmp/basic-ftp-check/package/dist
+
       - name: Inspect modern express-jwt API
         if: always()
         run: |
