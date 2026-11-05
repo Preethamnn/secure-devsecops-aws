@@ -171,27 +171,40 @@ jobs:
             sleep 2
           done
 
-      - name: Verify remaining dependency remediations
-        working-directory: juice-shop
+            - name: Verify remaining dependency remediations
         run: |
-          npm ls http-cache-semantics decode-uri-component
+          node <<'NODE'
+          const fs = require('fs');
 
-          node -e "
-            const packages = [
-              ['http-cache-semantics', '4.1.1'],
-              ['decode-uri-component', '0.5.1']
-            ];
+          const root = 'image-rootfs/juice-shop/node_modules';
 
-            for (const [name, expected] of packages) {
-              const p = require(name + '/package.json');
-              console.log(name + ': ' + p.version);
+          const packages = [
+            ['http-cache-semantics', '4.1.1'],
+            ['decode-uri-component', '0.5.1'],
+            ['basic-ftp', '6.2.1']
+          ];
 
-              if (p.version !== expected) {
-                throw new Error('Expected ' + name + '@' + expected);
-              }
+          for (const [name, expected] of packages) {
+            const file = `${root}/${name}/package.json`;
+
+            if (!fs.existsSync(file)) {
+              throw new Error(`Package not found: ${name}`);
             }
-          "
-          
+
+            const pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
+
+            console.log(`${name}: ${pkg.version}`);
+
+            if (pkg.version !== expected) {
+              throw new Error(
+                `Expected ${name}@${expected}, found ${pkg.version}`
+              );
+            }
+          }
+
+          console.log('All dependency version checks passed.');
+          NODE
+
       - name: Inspect Juice Shop image filesystem
         continue-on-error: true
         run: |
