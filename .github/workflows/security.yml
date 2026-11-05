@@ -545,6 +545,21 @@ jobs:
           npm view get-uri version
           npm view get-uri@latest dependencies --json
           npm view get-uri@latest engines --json
+
+      - name: Inspect basic-ftp API compatibility
+        if: always()
+        run: |
+          echo "=== get-uri FTP implementation ==="
+          grep -R -n -E "basic-ftp|Client\\(|access\\(|downloadTo\\(|list\\(" \
+            image-rootfs/juice-shop/node_modules/get-uri
+
+          echo "=== basic-ftp 5.3.1 metadata ==="
+          npm view basic-ftp@5.3.1 engines --json
+
+          echo "=== basic-ftp 6.2.1 metadata ==="
+          npm view basic-ftp@6.2.1 engines --json
+          npm view basic-ftp@6.2.1 types
+
           
       - name: Inspect modern express-jwt API
         if: always()
