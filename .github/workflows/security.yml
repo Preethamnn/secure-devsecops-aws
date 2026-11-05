@@ -94,17 +94,7 @@ jobs:
           echo "Configured overrides:"
           node -e "console.log(JSON.stringify(require('./package.json').overrides, null, 2))"
 
-      - name: Verify basic-ftp remediation
-        run: |
-          npm ls basic-ftp --prefix juice-shop
-          node -e "
-            const p = require('./juice-shop/node_modules/basic-ftp/package.json');
-            console.log('Installed basic-ftp:', p.version);
-            if (p.version !== '6.2.1') {
-              throw new Error('Expected basic-ftp 6.2.1');
-            }
-          "
-          
+
       - name: Update express-jwt authentication API
         run: |
           python3 - <<'PY'
@@ -201,6 +191,17 @@ jobs:
 
           cat dependency-tree.json
 
+      - name: Verify basic-ftp remediation
+        run: |
+          echo "=== Verify installed basic-ftp version ==="
+          node -e "
+            const p = require('./image-rootfs/juice-shop/node_modules/basic-ftp/package.json');
+            console.log('Installed basic-ftp:', p.version);
+            if (p.version !== '6.2.1') {
+              throw new Error('Expected basic-ftp 6.2.1');
+            }
+          "
+          
       - name: Inspect sqlite3 and tar dependency chain
         if: always()
         run: |
