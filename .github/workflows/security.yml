@@ -171,40 +171,6 @@ jobs:
             sleep 2
           done
 
-      - name: Verify remaining dependency remediations
-        run: |
-          node <<'NODE'
-          const fs = require('fs');
-
-          const root = 'image-rootfs/juice-shop/node_modules';
-
-          const packages = [
-            ['http-cache-semantics', '4.1.1'],
-            ['decode-uri-component', '0.5.1'],
-            ['basic-ftp', '6.2.1']
-          ];
-
-          for (const [name, expected] of packages) {
-            const file = `${root}/${name}/package.json`;
-
-            if (!fs.existsSync(file)) {
-              throw new Error(`Package not found: ${name}`);
-            }
-
-            const pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
-
-            console.log(`${name}: ${pkg.version}`);
-
-            if (pkg.version !== expected) {
-              throw new Error(
-                `Expected ${name}@${expected}, found ${pkg.version}`
-              );
-            }
-          }
-
-          console.log('All dependency version checks passed.');
-          NODE
-
       - name: Inspect Juice Shop image filesystem
         continue-on-error: true
         run: |
@@ -225,6 +191,78 @@ jobs:
           \) -print > dependency-tree.json
 
           cat dependency-tree.json
+
+      - name: Verify remaining dependency remediations
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+
+          const root = 'image-rootfs/juice-shop/node_modules';
+
+          const expected = {
+            'http-cache-semantics': '4.1.1',
+            'decode-uri-component': '0.5.1',
+            'basic-ftp': '6.2.1'
+          };
+
+          const found = {};
+
+          function walk(dir) {
+            if (!fs.existsSync(dir)) return;
+
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (!entry.isDirectory()) continue;
+
+              const full = path.join(dir, entry.name);
+              const packageFile = path.join(full, 'package.json');
+
+              if (fs.existsSync(packageFile)) {
+                try {
+                  const pkg = JSON.parse(
+                    fs.readFileSync(packageFile, 'utf8')
+                  );
+
+                  if (Object.hasOwn(expected, pkg.name)) {
+                    found[pkg.name] ??= [];
+                    found[pkg.name].push({
+                      version: pkg.version,
+                      location: full
+                    });
+                  }
+                } catch (error) {
+                  console.log(`Could not read ${packageFile}`);
+                }
+              }
+
+              walk(full);
+            }
+          }
+
+          walk(root);
+
+          for (const [name, version] of Object.entries(expected)) {
+            const instances = found[name] || [];
+
+            if (instances.length === 0) {
+              throw new Error(`Package not found: ${name}`);
+            }
+
+            for (const instance of instances) {
+              console.log(
+                `${name}: ${instance.version} at ${instance.location}`
+              );
+
+              if (instance.version !== version) {
+                throw new Error(
+                  `Expected ${name}@${version}, found ${instance.version}`
+                );
+              }
+            }
+          }
+
+          console.log('All dependency remediation checks passed.');
+          NODE
 
       - name: Inspect remaining vulnerable dependency parents
         if: always()
