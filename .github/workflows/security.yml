@@ -89,10 +89,22 @@ jobs:
           npm pkg set 'dependencies.sqlite3=6.0.1'
           npm pkg set 'overrides.replace.minimatch=3.1.4'
           npm pkg set 'dependencies.express-jwt=8.5.1'
+          npm pkg set "overrides.get-uri.basic-ftp=6.2.1"
 
           echo "Configured overrides:"
           node -e "console.log(JSON.stringify(require('./package.json').overrides, null, 2))"
 
+      - name: Verify basic-ftp remediation
+        run: |
+          npm ls basic-ftp --prefix juice-shop
+          node -e "
+            const p = require('./juice-shop/node_modules/basic-ftp/package.json');
+            console.log('Installed basic-ftp:', p.version);
+            if (p.version !== '6.2.1') {
+              throw new Error('Expected basic-ftp 6.2.1');
+            }
+          "
+          
       - name: Update express-jwt authentication API
         run: |
           python3 - <<'PY'
