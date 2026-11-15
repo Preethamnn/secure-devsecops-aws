@@ -133,6 +133,17 @@ jobs:
           file.write_text(source)
           print("Successfully updated express-jwt authentication API")
           PY
+  
+      - name: Inspect JWT key configuration
+        run: |
+          echo "=== JWT key references in insecurity.ts ==="
+          grep -n -E "privateKey|publicKey|jwt.sign|jwt.verify|authorize" \
+            juice-shop/lib/insecurity.ts
+
+          echo "=== Encryption key files ==="
+          find juice-shop -type f \
+            \( -iname "*.key" -o -iname "*.pem" -o -iname "*.pub" \) \
+            -not -path "*/node_modules/*"
 
 
       - name: Build Juice Shop Docker image
