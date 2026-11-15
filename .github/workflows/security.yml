@@ -415,12 +415,18 @@ jobs:
             -H "Content-Type: application/json" \
             -d "{\"email\":\"$CI_EMAIL\",\"password\":\"$CI_PASSWORD\"}")
 
-          if [ "$RESTART_LOGIN_CODE" != "200" ]; then
+            if [ "$RESTART_LOGIN_CODE" != "200" ]; then
             echo "FAIL: Registered user could not log in after restart."
-            docker logs juice-shop-smoke
+
+            echo "Login response body:"
+            cat /tmp/restart-login-response.json
+
+            echo "Recent container logs:"
+            docker logs --tail 100 juice-shop-smoke
+
             exit 1
           fi
-
+          
           echo "PASS: Registered user persisted across container restart."
 
       - name: Inspect Juice Shop image filesystem
