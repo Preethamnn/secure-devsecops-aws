@@ -184,12 +184,31 @@ jobs:
 
           echo "PASS: User registration completed."
 
+          
           echo "Testing user login..."
 
-          LOGIN_RESPONSE=$(curl --fail --silent --show-error \
+          LOGIN_HTTP_CODE=$(curl --silent --show-error \
+            -o /tmp/login-response.json \
+            -w "%{http_code}" \
             -X POST http://127.0.0.1:3000/rest/user/login \
             -H "Content-Type: application/json" \
             -d "{\"email\":\"$CI_EMAIL\",\"password\":\"$CI_PASSWORD\"}")
+
+          echo "Login HTTP status: $LOGIN_HTTP_CODE"
+          echo "Login response:"
+          cat /tmp/login-response.json
+          echo
+
+          if [ "$LOGIN_HTTP_CODE" != "200" ]; then
+            echo "FAIL: Login request failed."
+            echo "=== Juice Shop container logs ==="
+            docker logs juice-shop-smoke
+            exit 1
+          fi
+
+          echo "PASS: Login endpoint returned HTTP 200."
+
+          LOGIN_RESPONSE=$(cat /tmp/login-response.json)
 
           TOKEN=$(printf '%s' "$LOGIN_RESPONSE" | node -e "
             let data = '';
@@ -203,6 +222,7 @@ jobs:
               console.log(response.authentication.token);
             });
           ")
+
 
           echo "PASS: Login returned an authentication token."
 
