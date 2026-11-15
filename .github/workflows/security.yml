@@ -98,22 +98,26 @@ jobs:
 
 
       
+      
       - name: Update express-jwt authentication API and JWT keys
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           file = Path("juice-shop/lib/insecurity.ts")
           source = file.read_text()
 
+          # 1. Update express-jwt import
           old_import = "import expressJwt from 'express-jwt'"
           new_import = "import { expressjwt } from 'express-jwt'"
 
           if old_import not in source:
               raise SystemExit("Expected express-jwt import not found")
 
-          source = source.replace(old_import, new_import)
+          source = source.replace(old_import, new_import, 1)
 
+          # 2. Update express-jwt middleware
           old_middleware = """export const isAuthorized = () => expressJwt(({ secret: publicKey }) as any)
           export const denyAll = () => expressJwt({ secret: '' + Math.random() } as any)"""
 
@@ -129,16 +133,9 @@ jobs:
           if old_middleware not in source:
               raise SystemExit("Expected authentication middleware not found")
 
-          source = source.replace(old_middleware, new_middleware)
+          source = source.replace(old_middleware, new_middleware, 1)
 
-          old_key = """export const publicKey = fs ? fs.readFileSync('encryptionkeys/jwt.pub', 'utf8') : 'placeholder-public-key'
-          const privateKey = '-----BEGIN RSA PRIVATE KEY-----"""
-
-          if old_key not in source:
-              raise SystemExit("Expected original JWT key declaration not found")
-
-          key_line_end = source.index("\\n", source.index("const privateKey =", source.index(old_key)))
-
+          # 3. Replace the complete original JWT key declaration
           new_keys = """export const publicKey = process.env.JWT_PUBLIC_KEY
             ? process.env.JWT_PUBLIC_KEY.replace(/\\\\n/g, '\\n')
             : fs.readFileSync('encryptionkeys/jwt.pub', 'utf8')
@@ -150,16 +147,40 @@ jobs:
           const hmacSecret = process.env.HMAC_SECRET
             || (() => { throw new Error('HMAC_SECRET is required') })()"""
 
-          source = source[:source.index(old_key)] + new_keys + source[key_line_end:]
+          pattern = r"export const publicKey =.*?(?=\nexport const isAuthorized =)"
 
-          source = source.replace(
-              "crypto.createHmac('sha256', privateKey)",
-              "crypto.createHmac('sha256', hmacSecret)"
+          source, count = re.subn(
+              pattern,
+              lambda match: new_keys,
+              source,
+              count=1,
+              flags=re.DOTALL
           )
 
+          if count != 1:
+              raise SystemExit("Could not replace original JWT key declaration")
+
+          # 4. Ensure the hardcoded private key is completely removed
+          if "BEGIN RSA PRIVATE KEY" in source:
+              raise SystemExit("Old hardcoded RSA private key still exists")
+
+          # 5. Separate HMAC secret from JWT private key
+          old_hmac = "crypto.createHmac('sha256', privateKey)"
+          new_hmac = "crypto.createHmac('sha256', hmacSecret)"
+
+          if old_hmac not in source:
+              raise SystemExit("Expected HMAC implementation not found")
+
+          source = source.replace(old_hmac, new_hmac, 1)
+
+          # 6. Save patched source
           file.write_text(source)
-          print("Updated express-jwt API and separated JWT/HMAC secrets")
+
+          print("Successfully updated express-jwt API.")
+          print("Original hardcoded RSA private key removed.")
+          print("JWT and HMAC secrets are separated.")
           PY
+
 
       - name: Inspect JWT and HMAC key usage
         run: |
@@ -231,9 +252,13 @@ jobs:
         run: |
           set -eu
 
+          
           docker run -d \
             --name juice-shop-smoke \
             -p 127.0.0.1:3000:3000 \
+            -e JWT_PRIVATE_KEY="$(cat "$RUNNER_TEMP/juice-shop-keys/jwt-private.pem")" \
+            -e JWT_PUBLIC_KEY="$(cat "$RUNNER_TEMP/juice-shop-keys/jwt-public.pem")" \
+            -e HMAC_SECRET="$(cat "$RUNNER_TEMP/juice-shop-keys/hmac-secret")" \
             juice-shop:ci
 
           cleanup() {
