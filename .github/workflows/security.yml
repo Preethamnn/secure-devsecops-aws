@@ -133,6 +133,22 @@ jobs:
           file.write_text(source)
           print("Successfully updated express-jwt authentication API")
           PY
+
+      - name: Inspect JWT and HMAC key usage
+        run: |
+          echo "=== JWT middleware and signing functions ==="
+          sed -n '45,65p' juice-shop/lib/insecurity.ts
+
+          echo "=== HMAC implementation ==="
+          sed -n '145,165p' juice-shop/lib/insecurity.ts
+
+          echo "=== JWT verification implementation ==="
+          sed -n '185,205p' juice-shop/lib/insecurity.ts
+
+          echo "=== Public key size ==="
+          openssl pkey -pubin \
+            -in juice-shop/encryptionkeys/jwt.pub \
+            -text -noout | head -n 3
   
       - name: Inspect JWT key configuration
         run: |
