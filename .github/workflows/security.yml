@@ -97,7 +97,8 @@ jobs:
           node -e "console.log(JSON.stringify(require('./package.json').overrides, null, 2))"
 
 
-      - name: Update express-jwt authentication API
+      
+      - name: Update express-jwt authentication API and JWT keys
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -130,8 +131,34 @@ jobs:
 
           source = source.replace(old_middleware, new_middleware)
 
+          old_key = """export const publicKey = fs ? fs.readFileSync('encryptionkeys/jwt.pub', 'utf8') : 'placeholder-public-key'
+          const privateKey = '-----BEGIN RSA PRIVATE KEY-----"""
+
+          if old_key not in source:
+              raise SystemExit("Expected original JWT key declaration not found")
+
+          key_line_end = source.index("\\n", source.index("const privateKey =", source.index(old_key)))
+
+          new_keys = """export const publicKey = process.env.JWT_PUBLIC_KEY
+            ? process.env.JWT_PUBLIC_KEY.replace(/\\\\n/g, '\\n')
+            : fs.readFileSync('encryptionkeys/jwt.pub', 'utf8')
+
+          const privateKey = process.env.JWT_PRIVATE_KEY
+            ? process.env.JWT_PRIVATE_KEY.replace(/\\\\n/g, '\\n')
+            : (() => { throw new Error('JWT_PRIVATE_KEY is required') })()
+
+          const hmacSecret = process.env.HMAC_SECRET
+            || (() => { throw new Error('HMAC_SECRET is required') })()"""
+
+          source = source[:source.index(old_key)] + new_keys + source[key_line_end:]
+
+          source = source.replace(
+              "crypto.createHmac('sha256', privateKey)",
+              "crypto.createHmac('sha256', hmacSecret)"
+          )
+
           file.write_text(source)
-          print("Successfully updated express-jwt authentication API")
+          print("Updated express-jwt API and separated JWT/HMAC secrets")
           PY
 
       - name: Inspect JWT and HMAC key usage
@@ -150,22 +177,56 @@ jobs:
             -in juice-shop/encryptionkeys/jwt.pub \
             -text -noout | head -n 3
   
-      - name: Inspect JWT key configuration
+
+
+      - name: Generate temporary JWT test keys
         run: |
-          echo "=== JWT key references in insecurity.ts ==="
-          grep -n -E "privateKey|publicKey|jwt.sign|jwt.verify|authorize" \
-            juice-shop/lib/insecurity.ts
+          mkdir -p "$RUNNER_TEMP/juice-shop-keys"
 
-          echo "=== Encryption key files ==="
-          find juice-shop -type f \
-            \( -iname "*.key" -o -iname "*.pem" -o -iname "*.pub" \) \
-            -not -path "*/node_modules/*"
+          openssl genpkey \
+            -algorithm RSA \
+            -pkeyopt rsa_keygen_bits:2048 \
+            -out "$RUNNER_TEMP/juice-shop-keys/jwt-private.pem"
 
+          openssl pkey \
+            -in "$RUNNER_TEMP/juice-shop-keys/jwt-private.pem" \
+            -pubout \
+            -out "$RUNNER_TEMP/juice-shop-keys/jwt-public.pem"
 
+          openssl rand -hex 32 > "$RUNNER_TEMP/juice-shop-keys/hmac-secret"
+
+          chmod 600 "$RUNNER_TEMP/juice-shop-keys/jwt-private.pem"
+          chmod 600 "$RUNNER_TEMP/juice-shop-keys/hmac-secret"
+
+          echo "Generated RSA 2048-bit JWT key pair and separate HMAC secret."
+
+      
       - name: Build Juice Shop Docker image
         run: docker build -t juice-shop:ci ./juice-shop
 
-      
+
+      - name: Generate temporary JWT test keys
+        run: |
+          mkdir -p "$RUNNER_TEMP/juice-shop-keys"
+
+          openssl genpkey \
+            -algorithm RSA \
+            -pkeyopt rsa_keygen_bits:2048 \
+            -out "$RUNNER_TEMP/juice-shop-keys/jwt-private.pem"
+
+          openssl pkey \
+            -in "$RUNNER_TEMP/juice-shop-keys/jwt-private.pem" \
+            -pubout \
+            -out "$RUNNER_TEMP/juice-shop-keys/jwt-public.pem"
+
+          openssl rand -hex 32 > "$RUNNER_TEMP/juice-shop-keys/hmac-secret"
+
+          chmod 600 "$RUNNER_TEMP/juice-shop-keys/jwt-private.pem"
+          chmod 600 "$RUNNER_TEMP/juice-shop-keys/hmac-secret"
+
+          echo "Generated RSA 2048-bit JWT key pair and separate HMAC secret."
+
+
       - name: Smoke test Juice Shop container
         run: |
           set -eu
