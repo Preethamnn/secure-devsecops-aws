@@ -279,7 +279,7 @@ jobs:
       - name: Build Juice Shop Docker image
         run: docker build -t juice-shop:ci ./juice-shop
 
-        
+
       - name: Smoke test Juice Shop container
         run: |
           set -eu
@@ -379,6 +379,49 @@ jobs:
             -o /dev/null
 
           echo "PASS: Authenticated user endpoint responded successfully."
+
+          echo "Testing database persistence across container restart..."
+
+          docker restart juice-shop-smoke >/dev/null
+
+          echo "Waiting for Juice Shop after restart..."
+
+          READY=0
+
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent \
+              http://127.0.0.1:3000/ \
+              -o /dev/null; then
+              READY=1
+              echo "PASS: Juice Shop recovered after restart."
+              break
+            fi
+
+            sleep 2
+          done
+
+          if [ "$READY" -ne 1 ]; then
+            echo "FAIL: Juice Shop did not recover after restart."
+            docker logs juice-shop-smoke
+            exit 1
+          fi
+
+          echo "Verifying previously registered user can log in..."
+
+          RESTART_LOGIN_CODE=$(curl --silent --show-error \
+            -o /tmp/restart-login-response.json \
+            -w "%{http_code}" \
+            -X POST http://127.0.0.1:3000/rest/user/login \
+            -H "Content-Type: application/json" \
+            -d "{\"email\":\"$CI_EMAIL\",\"password\":\"$CI_PASSWORD\"}")
+
+          if [ "$RESTART_LOGIN_CODE" != "200" ]; then
+            echo "FAIL: Registered user could not log in after restart."
+            docker logs juice-shop-smoke
+            exit 1
+          fi
+
+          echo "PASS: Registered user persisted across container restart."
 
       - name: Inspect Juice Shop image filesystem
         continue-on-error: true
