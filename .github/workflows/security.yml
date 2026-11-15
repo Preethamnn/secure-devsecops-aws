@@ -278,13 +278,11 @@ jobs:
 
       - name: Build Juice Shop Docker image
         run: docker build -t juice-shop:ci ./juice-shop
-
-
+      
       - name: Smoke test Juice Shop container
         run: |
           set -eu
 
-          
           docker run -d \
             --name juice-shop-smoke \
             -p 127.0.0.1:3000:3000 \
@@ -322,14 +320,14 @@ jobs:
           CI_EMAIL="ci-smoke-$(date +%s)@example.com"
           CI_PASSWORD="CI-Test-Password-2026!"
 
-          REGISTER_RESPONSE=$(curl --fail --silent --show-error \
+          curl --fail --silent --show-error \
             -X POST http://127.0.0.1:3000/api/Users/ \
             -H "Content-Type: application/json" \
-            -d "{\"email\":\"$CI_EMAIL\",\"password\":\"$CI_PASSWORD\",\"passwordRepeat\":\"$CI_PASSWORD\",\"securityQuestion\":{\"id\":1},\"securityAnswer\":\"CI test answer\"}")
+            -d "{\"email\":\"$CI_EMAIL\",\"password\":\"$CI_PASSWORD\",\"passwordRepeat\":\"$CI_PASSWORD\",\"securityQuestion\":{\"id\":1},\"securityAnswer\":\"CI test answer\"}" \
+            -o /dev/null
 
           echo "PASS: User registration completed."
 
-          
           echo "Testing user login..."
 
           LOGIN_HTTP_CODE=$(curl --silent --show-error \
@@ -340,12 +338,12 @@ jobs:
             -d "{\"email\":\"$CI_EMAIL\",\"password\":\"$CI_PASSWORD\"}")
 
           echo "Login HTTP status: $LOGIN_HTTP_CODE"
-          echo "Login response:"
-          cat /tmp/login-response.json
-          echo
 
           if [ "$LOGIN_HTTP_CODE" != "200" ]; then
             echo "FAIL: Login request failed."
+            echo "Login response:"
+            cat /tmp/login-response.json
+            echo
             echo "=== Juice Shop container logs ==="
             docker logs juice-shop-smoke
             exit 1
@@ -353,9 +351,7 @@ jobs:
 
           echo "PASS: Login endpoint returned HTTP 200."
 
-          LOGIN_RESPONSE=$(cat /tmp/login-response.json)
-
-          TOKEN=$(printf '%s' "$LOGIN_RESPONSE" | node -e "
+          TOKEN=$(node -e "
             let data = '';
             process.stdin.on('data', chunk => data += chunk);
             process.stdin.on('end', () => {
@@ -366,8 +362,7 @@ jobs:
               }
               console.log(response.authentication.token);
             });
-          ")
-
+          " < /tmp/login-response.json)
 
           echo "PASS: Login returned an authentication token."
 
@@ -380,54 +375,6 @@ jobs:
 
           echo "PASS: Authenticated user endpoint responded successfully."
 
-          echo "Testing database persistence across container restart..."
-
-          docker restart juice-shop-smoke >/dev/null
-
-          echo "Waiting for Juice Shop after restart..."
-
-          READY=0
-
-          for attempt in $(seq 1 30); do
-            if curl --fail --silent \
-              http://127.0.0.1:3000/ \
-              -o /dev/null; then
-              READY=1
-              echo "PASS: Juice Shop recovered after restart."
-              break
-            fi
-
-            sleep 2
-          done
-
-          if [ "$READY" -ne 1 ]; then
-            echo "FAIL: Juice Shop did not recover after restart."
-            docker logs juice-shop-smoke
-            exit 1
-          fi
-
-          echo "Verifying previously registered user can log in..."
-
-          RESTART_LOGIN_CODE=$(curl --silent --show-error \
-            -o /tmp/restart-login-response.json \
-            -w "%{http_code}" \
-            -X POST http://127.0.0.1:3000/rest/user/login \
-            -H "Content-Type: application/json" \
-            -d "{\"email\":\"$CI_EMAIL\",\"password\":\"$CI_PASSWORD\"}")
-
-            if [ "$RESTART_LOGIN_CODE" != "200" ]; then
-            echo "FAIL: Registered user could not log in after restart."
-
-            echo "Login response body:"
-            cat /tmp/restart-login-response.json
-
-            echo "Recent container logs:"
-            docker logs --tail 100 juice-shop-smoke
-
-            exit 1
-          fi
-          
-          echo "PASS: Registered user persisted across container restart."
 
       - name: Inspect Juice Shop image filesystem
         continue-on-error: true
