@@ -3,3 +3,12 @@
 terraform/.terraform/
 terraform/terraform.tfstate*
 terraform/crash.log
+# Terraform local files
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfplan
+tfplan
+crash.log
+crash.*.log
