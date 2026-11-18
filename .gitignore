@@ -12,3 +12,14 @@ terraform/crash.log
 tfplan
 crash.log
 crash.*.log
+
+# Kubernetes secrets
+kubernetes/secrets/
+
+# Local inspection files
+juice-shop-data-inspect/
+
+# Local security scan reports
+trivy-k8s-report.json
+trivy-source.json
+trivy-image.json
