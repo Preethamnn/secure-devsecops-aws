@@ -1494,3 +1494,31 @@ jobs:
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         run: docker push ghcr.io/preethamnn/secure-devsecops-aws:latest
 
+  kubernetes-manifest-scan:
+    name: Kubernetes Manifest Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout DevSecOps repository
+        uses: actions/checkout@v4
+
+      - name: Scan Kubernetes manifests with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: kubernetes
+          scanners: misconfig
+          severity: HIGH,CRITICAL
+          format: json
+          output: trivy-k8s-report.json
+          exit-code: '0'
+
+      - name: Upload Kubernetes security report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-kubernetes-security-report
+          path: trivy-k8s-report.json
+          if-no-files-found: warn
+          retention-days: 14
